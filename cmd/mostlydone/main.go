@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"strconv"
@@ -49,25 +51,50 @@ func rateLimitConfig() (rpm, burst int, err error) {
 	return rpm, burst, nil
 }
 
+// config is the environment-derived server configuration.
+type config struct {
+	addr, dbPath, slug string
+	secure             bool
+	clientIPHeader     string
+	trustedProxies     []netip.Prefix
+	rpm, burst         int
+}
+
+// loadConfig reads and validates every setting that can stop startup. serve
+// calls it before touching the filesystem so a bad value leaves nothing behind.
+func loadConfig() (config, error) {
+	c := config{
+		addr:           env("MOSTLYDONE_ADDR", ":8080"),
+		dbPath:         env("MOSTLYDONE_DB", "./mostlydone.db"),
+		slug:           env("MOSTLYDONE_WORKSPACE_SLUG", "main"),
+		secure:         os.Getenv("MOSTLYDONE_SECURE_COOKIES") == "true",
+		clientIPHeader: os.Getenv("MOSTLYDONE_CLIENT_IP_HEADER"),
+	}
+	if _, _, err := net.SplitHostPort(c.addr); err != nil {
+		return c, fmt.Errorf("MOSTLYDONE_ADDR: %v", err)
+	}
+	var err error
+	if c.trustedProxies, err = api.ParseTrustedProxies(os.Getenv("MOSTLYDONE_TRUSTED_PROXIES")); err != nil {
+		return c, fmt.Errorf("MOSTLYDONE_TRUSTED_PROXIES: %v", err)
+	}
+	if c.rpm, c.burst, err = rateLimitConfig(); err != nil {
+		return c, err
+	}
+	return c, nil
+}
+
 // newHandler builds the server. When the database has no users it arms a
 // one-time setup token, logs it and (best effort) saves it to
 // <dbPath>.setup-token; an empty dbPath skips the file.
-func newHandler(s *store.Store, slug string, secure bool, dbPath string) http.Handler {
-	a := api.New(s, slug, secure)
-	a.ClientIPHeader = os.Getenv("MOSTLYDONE_CLIENT_IP_HEADER")
-	proxies, err := api.ParseTrustedProxies(os.Getenv("MOSTLYDONE_TRUSTED_PROXIES"))
-	if err != nil {
-		log.Fatalf("MOSTLYDONE_TRUSTED_PROXIES: %v", err)
-	}
-	a.TrustedProxies = proxies
-	if a.ClientIPHeader != "" && len(proxies) == 0 {
+func newHandler(s *store.Store, c config) http.Handler {
+	dbPath := c.dbPath
+	a := api.New(s, c.slug, c.secure)
+	a.ClientIPHeader = c.clientIPHeader
+	a.TrustedProxies = c.trustedProxies
+	if a.ClientIPHeader != "" && len(c.trustedProxies) == 0 {
 		log.Printf("warning: MOSTLYDONE_CLIENT_IP_HEADER is ignored until MOSTLYDONE_TRUSTED_PROXIES is set")
 	}
-	rpm, burst, err := rateLimitConfig()
-	if err != nil {
-		log.Fatalf("%v", err)
-	}
-	limiter := a.SetRateLimit(rpm, burst)
+	limiter := a.SetRateLimit(c.rpm, c.burst)
 	if n, err := s.UserCount(context.Background()); err != nil {
 		log.Fatalf("count users: %v", err)
 	} else if n > 0 {
@@ -198,10 +225,11 @@ func main() {
 }
 
 func serve() {
-	addr := env("MOSTLYDONE_ADDR", ":8080")
-	dbPath := env("MOSTLYDONE_DB", "./mostlydone.db")
-	slug := env("MOSTLYDONE_WORKSPACE_SLUG", "main")
-	secure := os.Getenv("MOSTLYDONE_SECURE_COOKIES") == "true"
+	cfg, err := loadConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
+	addr, dbPath, slug := cfg.addr, cfg.dbPath, cfg.slug
 
 	// One server per database file; also keeps `restore` out while serving.
 	lock, err := dblock.Acquire(dbPath)
@@ -233,7 +261,7 @@ func serve() {
 
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           newHandler(s, slug, secure, dbPath),
+		Handler:           newHandler(s, cfg),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,

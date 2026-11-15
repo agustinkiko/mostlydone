@@ -17,7 +17,7 @@ func TestRouting(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	h := newHandler(s, "main", false, "")
+	h := newHandler(s, config{slug: "main"})
 	cases := []struct {
 		path string
 		code int
@@ -49,7 +49,7 @@ func TestSetupTokenFileLifecycle(t *testing.T) {
 	file := dbPath + ".setup-token"
 
 	// No users: a token is armed and saved with mode 0600.
-	newHandler(s, "main", false, dbPath)
+	newHandler(s, config{slug: "main", dbPath: dbPath})
 	fi, err := os.Stat(file)
 	if err != nil {
 		t.Fatalf("token file not written: %v", err)
@@ -62,7 +62,7 @@ func TestSetupTokenFileLifecycle(t *testing.T) {
 	if _, err := s.Setup(context.Background(), "main", "a@example.test", "password-123", "A"); err != nil {
 		t.Fatal(err)
 	}
-	newHandler(s, "main", false, dbPath)
+	newHandler(s, config{slug: "main", dbPath: dbPath})
 	if _, err := os.Stat(file); !os.IsNotExist(err) {
 		t.Fatalf("stale token file not removed: %v", err)
 	}
