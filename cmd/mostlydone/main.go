@@ -5,10 +5,12 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -25,12 +27,35 @@ func env(name, def string) string {
 	return def
 }
 
+// rateLimitConfig reads MOSTLYDONE_RATE_LIMIT (requests per minute per
+// credential; unset or 0 = off) and MOSTLYDONE_RATE_LIMIT_BURST (default: the
+// per-minute value).
+func rateLimitConfig() (rpm, burst int, err error) {
+	if v := os.Getenv("MOSTLYDONE_RATE_LIMIT"); v != "" {
+		if rpm, err = strconv.Atoi(v); err != nil || rpm < 0 {
+			return 0, 0, fmt.Errorf("MOSTLYDONE_RATE_LIMIT must be a whole number of requests per minute (0 = off), got %q", v)
+		}
+	}
+	burst = rpm
+	if v := os.Getenv("MOSTLYDONE_RATE_LIMIT_BURST"); v != "" {
+		if burst, err = strconv.Atoi(v); err != nil || burst < 1 {
+			return 0, 0, fmt.Errorf("MOSTLYDONE_RATE_LIMIT_BURST must be a whole number of at least 1, got %q", v)
+		}
+	}
+	return rpm, burst, nil
+}
+
 // newHandler builds the server. When the database has no users it arms a
 // one-time setup token, logs it and (best effort) saves it to
 // <dbPath>.setup-token; an empty dbPath skips the file.
 func newHandler(s *store.Store, slug string, secure bool, dbPath string) http.Handler {
 	a := api.New(s, slug, secure)
 	a.ClientIPHeader = os.Getenv("MOSTLYDONE_CLIENT_IP_HEADER")
+	rpm, burst, err := rateLimitConfig()
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	limiter := a.SetRateLimit(rpm, burst)
 	if n, err := s.UserCount(context.Background()); err != nil {
 		log.Fatalf("count users: %v", err)
 	} else if n > 0 {
@@ -57,7 +82,7 @@ func newHandler(s *store.Store, slug string, secure bool, dbPath string) http.Ha
 	mux := http.NewServeMux()
 	mux.Handle("/api/", apiH)
 	mux.Handle("/auth/", apiH)
-	mux.Handle("/mcp", mcp.Handler(s, api.TokenAuth(s)))
+	mux.Handle("/mcp", mcp.Handler(s, api.TokenAuth(s), limiter))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.Write([]byte("ok\n"))

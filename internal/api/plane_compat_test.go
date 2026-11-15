@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -225,9 +226,9 @@ func TestPlaneV1Compat(t *testing.T) {
 
 		bad := api.must(400, "GET", planeWS+"/projects/"+pid+"/work-items/?cursor=bad", nil)
 		eq(t, "bad cursor", bad["detail"], "Invalid cursor parameter.")
-		big := api.must(400, "GET", planeWS+"/projects/"+pid+"/work-items/?per_page=1001", nil)
-		if !strings.Contains(fmtString(big["detail"]), "1000") {
-			t.Fatalf("per_page 1001: %v", big)
+		big := api.must(400, "GET", planeWS+"/projects/"+pid+"/work-items/?per_page="+strconv.Itoa(maxPerPage+1), nil)
+		if !strings.Contains(fmtString(big["detail"]), strconv.Itoa(maxPerPage)) {
+			t.Fatalf("per_page %d: %v", maxPerPage+1, big)
 		}
 	})
 

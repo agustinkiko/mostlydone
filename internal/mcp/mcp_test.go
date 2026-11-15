@@ -393,7 +393,7 @@ func post(h http.Handler, token, body string) *httptest.ResponseRecorder {
 func TestHTTPAuth(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
-	h := Handler(e.s, api.TokenAuth(e.s))
+	h := Handler(e.s, api.TokenAuth(e.s), nil)
 	const list = `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`
 
 	for name, tok := range map[string]string{"no token": "", "bad token": "nope"} {

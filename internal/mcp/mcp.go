@@ -14,6 +14,7 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"mostlydone/internal/api"
 	"mostlydone/internal/store"
 )
 
@@ -28,13 +29,15 @@ type callerKey struct{}
 
 // Handler returns the /mcp handler. auth resolves a request to its user from
 // an API token (X-API-Key or Authorization: Bearer); main passes
-// api.TokenAuth(s). Any auth failure is answered with 401.
+// api.TokenAuth(s). Any auth failure is answered with 401. limiter (nil = off)
+// is the API's, so a token's REST and MCP calls share one bucket; it is
+// charged only after authentication succeeds.
 //
 // The SDK runs in stateless + JSON-response mode: no sessions are kept between
 // requests and no streams stay open, so idle memory does not grow. A fresh
 // server is built per request, bound to that request's user; only the schema
 // cache is shared.
-func Handler(s *store.Store, auth func(*http.Request) (*store.User, error)) http.Handler {
+func Handler(s *store.Store, auth func(*http.Request) (*store.User, error), limiter *api.Limiter) http.Handler {
 	cache := sdk.NewSchemaCache()
 	inner := sdk.NewStreamableHTTPHandler(func(r *http.Request) *sdk.Server {
 		c, ok := r.Context().Value(callerKey{}).(*caller)
@@ -49,6 +52,9 @@ func Handler(s *store.Store, auth func(*http.Request) (*store.User, error)) http
 		if err != nil {
 			w.Header().Set("WWW-Authenticate", "Bearer")
 			writeDetail(w, http.StatusUnauthorized, "Authentication credentials were not provided or are not valid.")
+			return
+		}
+		if !limiter.Admit(w, api.TokenKey(r)) {
 			return
 		}
 		ws, role, err := s.UserWorkspace(r.Context(), u.ID)

@@ -15,7 +15,7 @@ const pj = (pid: string) => `${ws()}/projects/${pid}`;
 const items = (pid: string) => `${pj(pid)}/work-items/`;
 const item = (pid: string, id: string) => `${pj(pid)}/work-items/${id}/`;
 
-function all<T>(path: string, query: Record<string, string> = {}, perPage = 1000) {
+function all<T>(path: string, query: Record<string, string> = {}, perPage = 250) {
   return fetchAllPages<T>((cursor) => api.get<Page<T>>(path, { ...query, per_page: perPage, cursor })).then((r) => r.items);
 }
 
@@ -69,7 +69,7 @@ export const issues = {
   /** All items matching the filter params, in board order. */
   list: (pid: string, params: Record<string, string>, maxItems = 5000) =>
     fetchAllPages<Issue>(
-      (cursor) => api.get<Page<Issue>>(items(pid), { order_by: "sort_order", ...params, per_page: 500, cursor }),
+      (cursor) => api.get<Page<Issue>>(items(pid), { order_by: "sort_order", ...params, per_page: 250, cursor }),
       maxItems,
     ),
   get: (pid: string, id: string) => api.get<Issue>(item(pid, id)),

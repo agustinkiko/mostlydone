@@ -336,7 +336,7 @@ func TestEndToEnd(t *testing.T) {
 	api.must(204, "DELETE", LK+lk["id"].(string)+"/", nil)
 
 	// Activities: comments hidden, ascending by default.
-	acts := api.list("GET", WI+aID+"/activities/?per_page=1000", nil)
+	acts := api.list("GET", WI+aID+"/activities/?per_page=250", nil)
 	first := acts[0].(map[string]any)
 	eq(t, "first activity", first["verb"], "created")
 	fields := map[string]bool{}
@@ -372,7 +372,11 @@ func TestEndToEnd(t *testing.T) {
 	eq(t, "bad cursor", api.must(400, "GET", WI+"?cursor=abc", nil)["detail"], "Invalid cursor parameter.")
 	api.must(400, "GET", WI+"?cursor=2:-1:1", nil)
 	api.must(400, "GET", WI+"?per_page=0", nil)
-	api.must(400, "GET", WI+"?per_page=1001", nil)
+	eq(t, "per_page cap", api.must(400, "GET", WI+"?per_page=251", nil)["detail"], "Invalid per_page value. Cannot exceed 250.")
+	api.must(200, "GET", WI+"?per_page=250", nil)
+	api.must(400, "GET", WI+"?cursor=300:0:0", nil)
+	api.must(200, "GET", WI+"?cursor=250:0:0", nil)
+	eq(t, "default per_page", strings.HasPrefix(api.must(200, "GET", WI, nil)["next_cursor"].(string), "100:"), true)
 	eq(t, "labels page", len(api.list("GET", PJ+"/labels/?per_page=1", nil)), 1)
 
 	// fields and expand.

@@ -18,7 +18,7 @@ import (
 const (
 	maxBody        = 1 << 20
 	defaultPerPage = 100
-	maxPerPage     = 1000
+	maxPerPage     = 250 // see SPEC.md, Pagination ruling
 	cookieName     = "mostlydone_session"
 	csrfHeader     = "X-Requested-With"
 	csrfValue      = "mostlydone"
@@ -31,6 +31,7 @@ type API struct {
 	secureCookies bool
 	logins        *loginLimiter
 	setup         *setupGate
+	limiter       *Limiter // nil: off
 
 	// ClientIPHeader, when set, names the proxy header that carries the real
 	// client address for the login throttle. See clientIP.
@@ -136,6 +137,9 @@ func (a *API) handle(mux *http.ServeMux, pattern string, minRole int, fn func(*r
 		c.user, c.viaToken, err = a.authenticate(r)
 		if err != nil {
 			c.authFail(err)
+			return
+		}
+		if !a.limiter.Admit(w, limitKey(r, c.viaToken, c.user)) {
 			return
 		}
 		if !c.csrfOK() {
