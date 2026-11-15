@@ -77,7 +77,10 @@ func (s *Store) UpdatePrefs(ctx context.Context, userID string, patch map[string
 			return err
 		}
 		maps.Copy(stored, clean)
-		raw, _ := json.Marshal(stored)
+		raw, err := json.Marshal(stored)
+		if err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `UPDATE users SET prefs = ? WHERE id = ?`, string(raw), userID); err != nil {
 			return err
 		}
