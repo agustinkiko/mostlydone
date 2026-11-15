@@ -153,7 +153,11 @@ func listProjects(c *rc) {
 // listProjectsLite serves projects-lite. include_archived is accepted and
 // ignored (there is no archive).
 func listProjectsLite(c *rc) {
-	list, err := c.a.s.ListProjects(c.r.Context(), c.ws.ID, "-created_at")
+	ob := c.r.URL.Query().Get("order_by")
+	if ob == "" {
+		ob = "-created_at"
+	}
+	list, err := c.a.s.ListProjects(c.r.Context(), c.ws.ID, ob)
 	if err != nil {
 		c.fail(err)
 		return

@@ -511,6 +511,10 @@ func TestPlaneV1CompatLite(t *testing.T) {
 		if first["archived_at"] != nil || first["cover_image"] != nil || first["cover_image_url"] != nil {
 			t.Fatalf("null fields not null: %v", first)
 		}
+		// Alpha was created before Beta.
+		for q, w := range map[string]string{"": "BetaAlpha", "name": "AlphaBeta", "-name": "BetaAlpha", "created_at": "AlphaBeta", "-created_at": "BetaAlpha"} {
+			eq(t, "projects order_by="+q, names(t, api.must(200, "GET", planeWS+"/projects-lite/?order_by="+q, nil)), w)
+		}
 		pg := api.must(200, "GET", planeWS+"/projects-lite/?per_page=1", nil)
 		eq(t, "next_page_results", pg["next_page_results"], true)
 		eq(t, "count", pg["count"], float64(1))
