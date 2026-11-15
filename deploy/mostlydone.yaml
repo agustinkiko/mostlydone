@@ -14,6 +14,10 @@
 #       sudo k3s ctr -n k8s.io images import mostlydone-<tag>.tar
 #
 # Apply:  kubectl apply -f deploy/mostlydone.yaml
+#
+# replicas stays 1 on purpose: a re-apply of this file must never scale
+# production down. During the cutover the PVC below is created first, by hand,
+# with volumeName (see CUTOVER.md 2.5), and this file is applied last.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -25,8 +29,14 @@ metadata:
   name: mostlydone-data
   namespace: mostlydone
 spec:
+  # Must match the existing PV for the cutover rebind: same class, access mode
+  # and size (CUTOVER.md 1.2 checks the size). The cutover creates this claim
+  # with `kubectl create` and volumeName set, so a later apply of this file
+  # leaves volumeName alone. For a hand-made rebind, uncomment and fill in:
+  # volumeName: pvc-<uid-of-the-existing-pv>
   accessModes: ["ReadWriteOnce"]
   storageClassName: local-path
+  volumeMode: Filesystem
   resources:
     requests:
       storage: 1Gi
@@ -52,6 +62,9 @@ spec:
         app: mostlydone
     spec:
       automountServiceAccountToken: false
+      # Same uid/gid as before the rename: the existing DB file is owned by
+      # 65532. local-path volumes are hostPath-backed, so fsGroup is not applied
+      # to them; ownership comes from the uid that wrote the files.
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -69,6 +82,9 @@ spec:
           env:
             - name: MOSTLYDONE_ADDR
               value: ":8080"
+            # If this file is missing, the app creates an EMPTY database and,
+            # from the Secret below, a fresh admin, and still looks healthy.
+            # The cutover renames the existing file to this name (CUTOVER.md 2.6).
             - name: MOSTLYDONE_DB
               value: /data/mostlydone.db
             # The public URL is HTTPS (Cloudflare), so cookies are HTTPS-only.
