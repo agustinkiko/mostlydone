@@ -153,4 +153,4 @@ Runbook:
 | `mostlydone.db-shm` | WAL index. Rebuilt automatically; safe to ignore |
 | `mostlydone.db.lock` | Lock file, empty. Safe to leave or delete when no process runs |
 | `mostlydone.db.pre-restore-*.bak` | Previous DB moved aside by `restore -force` |
-| `pre-v*.bak` | Automatic snapshot taken just before pending migrations are applied to an existing DB (added by MD-004, branch `feature/agustinkiko-setup-token-migration-guard`). A valid restore source if an upgrade goes wrong. Prune old ones by hand |
+| `pre-v*.bak` | Automatic snapshot taken just before pending migrations are applied to an existing DB (added by MD-004, branch `feature/agustinkiko-setup-token-migration-guard`). Mode 0600. A valid restore source if an upgrade goes wrong. Prune old ones by hand |

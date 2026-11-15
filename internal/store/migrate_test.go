@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -94,5 +95,46 @@ func TestSnapshotDoesNotOverwrite(t *testing.T) {
 	m, _ := filepath.Glob(bak + ".*")
 	if len(m) != 1 {
 		t.Fatalf("want one timestamped backup, got %v", m)
+	}
+}
+
+func TestSnapshotsAreOwnerOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no unix file modes")
+	}
+	defer setPermissiveUmask()()
+	upgrade := func(name string, preexisting bool) []string {
+		path := filepath.Join(t.TempDir(), name)
+		db := rawDB(t, path)
+		if err := migrateFS(db, mfs("001"), path); err != nil {
+			t.Fatal(err)
+		}
+		if preexisting {
+			// Forces the timestamped name.
+			if err := os.WriteFile(path+".pre-v2.bak", []byte("x"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := migrateFS(db, mfs("001", "002"), path); err != nil {
+			t.Fatal(err)
+		}
+		pat := path + ".pre-v2.bak"
+		if preexisting {
+			pat += ".*"
+		}
+		m, _ := filepath.Glob(pat)
+		if len(m) != 1 {
+			t.Fatalf("want one snapshot matching %s, got %v", pat, m)
+		}
+		return m
+	}
+	for _, p := range append(upgrade("a.db", false), upgrade("b.db", true)...) {
+		st, err := os.Stat(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := st.Mode().Perm(); got != 0o600 {
+			t.Errorf("%s mode %o, want 600", filepath.Base(p), got)
+		}
 	}
 }

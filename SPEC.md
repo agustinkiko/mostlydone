@@ -106,7 +106,8 @@ docs/                   plane-api-reference.md, REA capture notes
   one), a snapshot is made with `VACUUM INTO`: `<db>.pre-v<N>.bak`, where N is
   the first pending version. An existing file is never overwritten; a UTC
   timestamp is appended (`<db>.pre-v<N>.bak.20060102T150405Z`). If the snapshot
-  fails, startup fails. In-memory databases are skipped.
+  fails, startup fails. In-memory databases are skipped. Snapshots are mode
+  0600 regardless of umask.
 
 ## Data model
 

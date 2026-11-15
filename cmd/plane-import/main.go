@@ -154,7 +154,7 @@ func run(dbPath, from, slug string) error {
 	db.SetMaxOpenConns(1)
 
 	backup := dbPath + ".before-plane-import-" + time.Now().UTC().Format("20060102-150405")
-	if _, err := db.Exec(`VACUUM INTO ?`, backup); err != nil {
+	if err := store.VacuumInto(db, backup); err != nil {
 		return fmt.Errorf("backup: %w", err)
 	}
 	log.Printf("backup saved: %s", backup)

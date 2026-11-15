@@ -111,8 +111,29 @@ func snapshot(db *sql.DB, path string, firstPending int) error {
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("pre-migration snapshot: %w", err)
 	}
-	if _, err := db.Exec(`VACUUM INTO ?`, dst); err != nil {
+	if err := VacuumInto(db, dst); err != nil {
 		return fmt.Errorf("pre-migration snapshot to %s: %w", dst, err)
 	}
 	return nil
+}
+
+// VacuumInto copies the database to a new file dst that only its owner can
+// read. VACUUM INTO alone would create dst with the process umask, so dst is
+// created 0600 first (SQLite accepts an existing empty file) and the mode is
+// set again afterwards for filesystems that ignore the create mode. dst must
+// not exist.
+func VacuumInto(db *sql.DB, dst string) error {
+	f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(dst)
+		return err
+	}
+	if _, err := db.Exec(`VACUUM INTO ?`, dst); err != nil {
+		os.Remove(dst)
+		return err
+	}
+	return os.Chmod(dst, 0o600)
 }
