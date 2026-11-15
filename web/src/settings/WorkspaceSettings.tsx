@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from "react";
 import { Link } from "wouter";
 import { errorText } from "../api/client";
-import { auth, projects as projectsApi, workspaceMembers } from "../api/endpoints";
-import { ROLE_ADMIN, ROLE_GUEST, ROLE_MEMBER, type Member, type Token, type TrashedProject } from "../api/types";
+import { auth, projects as projectsApi } from "../api/endpoints";
+import { ROLE_ADMIN, ROLE_GUEST, ROLE_MEMBER, type AccountUser, type Member, type Token, type TrashedProject } from "../api/types";
 import { useIsAdmin, useSession } from "../app/session";
 import { TopBar } from "../app/Shell";
-import { Avatar, Empty, ErrorBox, fieldError, generalError, Loading, userName } from "../components/bits";
+import { Empty, ErrorBox, fieldError, generalError, Loading } from "../components/bits";
 import { ConfirmDialog } from "../components/Dialog";
 import { IconCopy, IconTrash } from "../components/Icons";
 import { formatDateTime } from "../lib/dates";
@@ -16,7 +16,7 @@ const ROLE_NAME: Record<number, string> = { [ROLE_ADMIN]: "Admin", [ROLE_MEMBER]
 
 export function WorkspaceSettings({ tab }: { tab: string }) {
   const isAdmin = useIsAdmin();
-  const tabs = [...(isAdmin ? [["members", "Members"], ["trash", "Trash"]] : []), ["tokens", "API tokens & MCP"]];
+  const tabs = [...(isAdmin ? [["members", "Members"], ["trash", "Trash"]] : []), ["tokens", "API tokens & MCP"], ["account", "Account"]];
   return (
     <>
       <TopBar title="Workspace settings" />
@@ -30,7 +30,8 @@ export function WorkspaceSettings({ tab }: { tab: string }) {
           {tab === "members" && (isAdmin ? <Members /> : <p className="muted">Only admins can see the member list.</p>)}
           {tab === "trash" && (isAdmin ? <Trash /> : <p className="muted">Only admins can see the trash.</p>)}
           {tab === "tokens" && <Tokens />}
-          {tab !== "members" && tab !== "trash" && tab !== "tokens" && <Empty title="Unknown settings page" />}
+          {tab === "account" && <Account />}
+          {tab !== "members" && tab !== "trash" && tab !== "tokens" && tab !== "account" && <Empty title="Unknown settings page" />}
         </div>
       </div>
     </>
@@ -38,13 +39,23 @@ export function WorkspaceSettings({ tab }: { tab: string }) {
 }
 
 function Members() {
-  const [list, setList] = useState<Member[] | undefined>();
+  const [list, setList] = useState<AccountUser[] | undefined>();
   const [error, setError] = useState("");
+  const [rowError, setRowError] = useState<Record<string, string>>({});
   const load = useCallback(() => {
     setError("");
-    workspaceMembers().then(setList, (e) => setError(errorText(e)));
+    auth.users().then(setList, (e) => setError(errorText(e)));
   }, []);
   useEffect(load, [load]);
+  const update = async (id: string, body: { role?: number; is_active?: boolean }) => {
+    setRowError((r) => ({ ...r, [id]: "" }));
+    try {
+      const m = await auth.updateUser(id, body);
+      setList((l) => l?.map((u) => (u.id === id ? { ...u, role: m.role, is_active: m.is_active } : u)));
+    } catch (e) {
+      setRowError((r) => ({ ...r, [id]: errorText(e) }));
+    }
+  };
   return (
     <>
       <section className="settings-section">
@@ -56,19 +67,23 @@ function Members() {
             {list.length === 0 && <div className="list-row muted">No members.</div>}
             {list.map((m) => (
               <div key={m.id} className="list-row">
-                <Avatar user={m} />
                 <div className="grow">
-                  <div>{userName(m)}</div>
+                  <div>{m.display_name}{!m.is_active && <span className="muted"> (deactivated)</span>}</div>
                   <div className="muted small">{m.email}</div>
+                  {rowError[m.id] && <p className="err" role="alert">{rowError[m.id]}</p>}
                 </div>
-                <span className="badge">{ROLE_NAME[m.role] ?? `Role ${m.role}`}</span>
+                <select className="input" aria-label={`Role for ${m.email}`} value={m.role} onChange={(e) => update(m.id, { role: Number(e.target.value) })}>
+                  {[ROLE_ADMIN, ROLE_MEMBER, ROLE_GUEST].map((r) => <option key={r} value={r}>{ROLE_NAME[r]}</option>)}
+                </select>
+                <button type="button" className="btn small" onClick={() => update(m.id, { is_active: !m.is_active })}>
+                  {m.is_active ? "Deactivate" : "Reactivate"}
+                </button>
               </div>
             ))}
           </div>
         )}
-        <p className="muted small" style={{ marginTop: 8 }}>Changing a role or removing a member is not available yet.</p>
       </section>
-      <AddUser onAdded={(m) => setList((l) => [...(l ?? []), m])} />
+      <AddUser onAdded={(m) => setList((l) => [...(l ?? []), { id: m.id, email: m.email, display_name: m.display_name, role: m.role, is_active: true }])} />
     </>
   );
 }
@@ -129,6 +144,53 @@ function Trash() {
           }}
         />
       )}
+    </section>
+  );
+}
+
+function Account() {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<unknown>(null);
+  const [done, setDone] = useState(false);
+  const ids = { c: useId(), n: useId() };
+  const submit = async (ev: FormEvent) => {
+    ev.preventDefault();
+    setBusy(true);
+    setErr(null);
+    setDone(false);
+    try {
+      await auth.changePassword(current, next);
+      setDone(true);
+      setCurrent("");
+      setNext("");
+    } catch (x) {
+      setErr(x);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const shown = ["current_password", "password"];
+  return (
+    <section className="settings-section">
+      <h2>Change password</h2>
+      <p className="muted">Other browsers are signed out. API tokens keep working.</p>
+      <form className="list-card" style={{ padding: 14 }} onSubmit={submit}>
+        <div className="field">
+          <label htmlFor={ids.c}>Current password</label>
+          <input id={ids.c} type="password" className="input" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />
+          {fieldError(err, "current_password") && <p className="err">{fieldError(err, "current_password")}</p>}
+        </div>
+        <div className="field">
+          <label htmlFor={ids.n}>New password</label>
+          <input id={ids.n} type="password" className="input" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
+          {fieldError(err, "password") && <p className="err">{fieldError(err, "password")}</p>}
+        </div>
+        {generalError(err, shown) && <p className="err" role="alert">{generalError(err, shown)}</p>}
+        {done && <p className="ok-text" role="status">Password changed.</p>}
+        <button type="submit" className="btn primary" disabled={busy || !current || !next}>{busy ? "Saving…" : "Change password"}</button>
+      </form>
     </section>
   );
 }

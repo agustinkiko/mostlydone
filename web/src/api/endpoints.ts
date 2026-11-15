@@ -2,7 +2,7 @@
 
 import { api, fetchAllPages, request } from "./client";
 import type {
-  Activity, Comment, Cycle, Issue, IssueInput, IssueLink, Label, Me, Member, Module, Page, Project,
+  AccountUser, Activity, Comment, Cycle, Issue, IssueInput, IssueLink, Label, Me, Member, Module, Page, Project,
   SearchHit, State, Token, TrashedProject, User,
 } from "./types";
 
@@ -32,6 +32,11 @@ export const auth = {
   deleteToken: (id: string) => api.del(`/auth/tokens/${id}`),
   createUser: (body: { email: string; password: string; display_name: string; role: number }) =>
     api.post<Member>("/auth/users", body),
+  users: () => api.get<AccountUser[]>("/auth/users"),
+  updateUser: (id: string, body: { role?: number; is_active?: boolean }) =>
+    api.patch<Member & { is_active: boolean }>(`/auth/users/${id}`, body),
+  changePassword: (current_password: string, new_password: string) =>
+    request<void>("/auth/password", { method: "POST", body: { current_password, new_password } }),
 };
 
 export const workspaceMembers = () => api.get<Member[]>(`${ws()}/members/`);

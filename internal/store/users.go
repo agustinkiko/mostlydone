@@ -117,6 +117,10 @@ func validateNewUser(email, password string) error {
 	if !strings.Contains(email, "@") || len(email) > 254 {
 		return invalid("email", "Enter a valid email address.")
 	}
+	return validatePassword(password)
+}
+
+func validatePassword(password string) error {
 	if len(password) < 8 {
 		return invalid("password", "Password must be at least 8 characters.")
 	}
@@ -205,6 +209,93 @@ func (s *Store) Authenticate(ctx context.Context, email, password string) (*User
 		return nil, ErrBadLogin
 	}
 	return u, nil
+}
+
+// ChangePassword sets a new password after checking the current one, and
+// signs out every session of the user except keepToken. API tokens are kept.
+func (s *Store) ChangePassword(ctx context.Context, userID, current, password, keepToken string) error {
+	var hash string
+	if err := s.r.QueryRowContext(ctx, `SELECT password_hash FROM users WHERE id = ?`, userID).Scan(&hash); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(current)) != nil {
+		return invalid("current_password", "Current password is incorrect.")
+	}
+	if err := validatePassword(password); err != nil {
+		return err
+	}
+	nh, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	return s.tx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?`, string(nh), now(), userID); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ? AND token_hash != ?`, userID, hashToken(keepToken))
+		return err
+	})
+}
+
+// SetMember changes a member's workspace role and/or active flag. Deactivating
+// also signs the user out everywhere. It refuses any change that would leave
+// the workspace without an active admin; the check runs in the same write
+// transaction as the change.
+func (s *Store) SetMember(ctx context.Context, wsID, userID string, role Opt[int], active Opt[bool]) (*Member, error) {
+	if role.Set && role.V != RoleAdmin && role.V != RoleMember && role.V != RoleGuest {
+		return nil, invalid("role", "Role must be one of 5, 15, 20.")
+	}
+	err := s.tx(ctx, func(tx *sql.Tx) error {
+		var memberID string
+		err := tx.QueryRowContext(ctx, `SELECT id FROM workspace_members WHERE workspace_id = ? AND user_id = ?`, wsID, userID).Scan(&memberID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		ts := now()
+		if role.Set {
+			if _, err := tx.ExecContext(ctx, `UPDATE workspace_members SET role = ?, updated_at = ? WHERE id = ?`, role.V, ts, memberID); err != nil {
+				return err
+			}
+		}
+		if active.Set {
+			if _, err := tx.ExecContext(ctx, `UPDATE users SET is_active = ?, updated_at = ? WHERE id = ?`, active.V, ts, userID); err != nil {
+				return err
+			}
+			if !active.V {
+				if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, userID); err != nil {
+					return err
+				}
+			}
+		}
+		var admins int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM workspace_members m JOIN users u ON u.id = m.user_id
+			WHERE m.workspace_id = ? AND m.role = ? AND u.is_active = 1`, wsID, RoleAdmin).Scan(&admins); err != nil {
+			return err
+		}
+		if admins == 0 {
+			return viewErr("The workspace needs at least one active admin.")
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.GetMember(ctx, wsID, userID)
+}
+
+// PurgeExpiredSessions deletes sessions that have expired and returns how many.
+func (s *Store) PurgeExpiredSessions(ctx context.Context) (int64, error) {
+	res, err := s.w.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at <= ?`, now())
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 // CreateSession returns a new random session token for userID.

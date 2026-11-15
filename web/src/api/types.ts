@@ -18,6 +18,15 @@ export interface Member extends User {
   role: number;
 }
 
+// Row of GET /auth/users (admin only), includes deactivated users.
+export interface AccountUser {
+  id: string;
+  email: string;
+  display_name: string;
+  role: number;
+  is_active: boolean;
+}
+
 export interface Me {
   user: User | null;
   role: number | null;

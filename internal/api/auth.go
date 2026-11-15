@@ -33,7 +33,7 @@ func (a *API) authRoutes(mux *http.ServeMux) {
 				return
 			}
 			if sessionOnly && c.viaToken {
-				c.json(http.StatusForbidden, map[string]any{"detail": "Token management needs a browser session."})
+				c.json(http.StatusForbidden, map[string]any{"detail": "This action needs a browser session."})
 				return
 			}
 			if c.ws, err = a.s.Workspace(r.Context(), a.slug); err == nil {
@@ -49,7 +49,10 @@ func (a *API) authRoutes(mux *http.ServeMux) {
 	private("GET /auth/tokens", true, listTokens)
 	private("POST /auth/tokens", true, createToken)
 	private("DELETE /auth/tokens/{id}", true, deleteToken)
+	private("GET /auth/users", false, listUsers)
 	private("POST /auth/users", false, createUser)
+	private("PATCH /auth/users/{id}", false, updateUser)
+	private("POST /auth/password", true, changePassword)
 }
 
 type credentials struct {
@@ -235,4 +238,60 @@ func createUser(c *rc) {
 		return
 	}
 	c.json(http.StatusCreated, memberJSON(&store.Member{User: *u, Role: in.Role}))
+}
+
+func listUsers(c *rc) {
+	if c.ws == nil || !c.isAdmin() {
+		c.denied()
+		return
+	}
+	list, err := c.a.s.ListMembers(c.r.Context(), c.ws.ID)
+	if err != nil {
+		c.fail(err)
+		return
+	}
+	out := make([]map[string]any, len(list))
+	for k, m := range list {
+		out[k] = map[string]any{"id": m.ID, "email": m.Email, "display_name": m.DisplayName, "role": m.Role, "is_active": m.IsActive}
+	}
+	c.json(http.StatusOK, out)
+}
+
+func updateUser(c *rc) {
+	if c.ws == nil || !c.isAdmin() {
+		c.denied()
+		return
+	}
+	var in struct {
+		Role     store.Opt[int]  `json:"role"`
+		IsActive store.Opt[bool] `json:"is_active"`
+	}
+	if !c.decode(&in) {
+		return
+	}
+	m, err := c.a.s.SetMember(c.r.Context(), c.ws.ID, c.r.PathValue("id"), in.Role, in.IsActive)
+	if err != nil {
+		c.fail(err)
+		return
+	}
+	out := memberJSON(m)
+	out["is_active"] = m.IsActive
+	c.json(http.StatusOK, out)
+}
+
+func changePassword(c *rc) {
+	var in struct {
+		Current  string `json:"current_password"`
+		Password string `json:"new_password"`
+	}
+	if !c.decode(&in) {
+		return
+	}
+	// The route is session-only, so the cookie is present.
+	ck, _ := c.r.Cookie(cookieName)
+	if err := c.a.s.ChangePassword(c.r.Context(), c.user.ID, in.Current, in.Password, ck.Value); err != nil {
+		c.fail(err)
+		return
+	}
+	c.noContent()
 }

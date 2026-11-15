@@ -164,6 +164,24 @@ func runBackup(cmd string, args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// purgeSessions deletes expired sessions now and then every hour until ctx ends.
+func purgeSessions(ctx context.Context, s *store.Store) {
+	tick := time.NewTicker(time.Hour)
+	defer tick.Stop()
+	for {
+		if n, err := s.PurgeExpiredSessions(ctx); err != nil {
+			log.Printf("purge sessions: %v", err)
+		} else if n > 0 {
+			log.Printf("purged %d expired sessions", n)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
+}
+
 func main() {
 	if len(os.Args) > 1 {
 		os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -222,6 +240,11 @@ func serve() {
 		defer close(purged)
 		s.RunTrashPurge(stop, time.Hour, log.Printf)
 	}()
+	sessionsPurged := make(chan struct{})
+	go func() {
+		defer close(sessionsPurged)
+		purgeSessions(stop, s)
+	}()
 	go func() {
 		log.Printf("listening on %s (db %s, workspace %q)", addr, dbPath, slug)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -236,4 +259,5 @@ func serve() {
 		log.Printf("shutdown: %v", err)
 	}
 	<-purged // don't close the database under a running purge
+	<-sessionsPurged
 }

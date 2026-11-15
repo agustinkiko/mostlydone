@@ -68,6 +68,22 @@ docs/                   plane-api-reference.md, REA capture notes
   `Authorization: Bearer <token>`. Tokens are shown once at creation;
   only a SHA-256 hash is stored.
 - Token management (session only): `GET/POST /auth/tokens`, `DELETE /auth/tokens/{id}`.
+- Password change (session only): `POST /auth/password` with `current_password`
+  and `new_password`. A wrong current password is 400 `{"current_password": [...]}`.
+  The new password follows the same rules as user creation. On success it
+  returns 204 and signs out the user's other sessions. The caller's session
+  stays. API tokens are not affected.
+- Users (admin only): `GET /auth/users` lists workspace members with `is_active`,
+  `POST /auth/users` adds one, `PATCH /auth/users/{id}` takes `role` (5, 15, 20)
+  and/or `is_active`. Unknown user is 404, bad role is 400.
+- Deactivation sets `users.is_active = 0` (global, not per workspace) and deletes
+  all of the user's sessions in the same transaction. Their API tokens stop
+  working too. Reactivating sets it back to 1. Deactivated users cannot log in.
+- Last-admin guard: a role change or deactivation that would leave the workspace
+  with no active admin is refused with 400 `{"error": "The workspace needs at least one active admin."}`.
+  This includes an admin demoting or deactivating themselves. The check and the
+  change run in one write transaction.
+- Expired sessions are deleted at startup and then every hour.
 - Cookie-authenticated writes must send header `X-Requested-With: mostlydone`
   (CSRF guard; a cross-site form cannot set it). API-key requests are exempt.
 - Every `/api/v1/` and `/mcp` request needs a session or a token. 401 otherwise.
@@ -127,7 +143,7 @@ Rulings where the reference is ambiguous or we differ on purpose:
 | Project trash (extension, not in Plane's public API) | Admin only. `GET /workspaces/{ws}/trashed-projects/` lists trashed projects in the list envelope, newest deleted first, as project objects with the real `deleted_at` plus `purge_at` (`deleted_at` + 30 days). `POST .../trashed-projects/{id}/restore/` returns 200 with the restored project (`deleted_at: null`; 404 if not trashed or past retention; 409 if a live project took its name or identifier). `DELETE .../trashed-projects/{id}/` permanently deletes it now (204; 404 if not in the trash). The web UI exposes this under workspace settings → Trash. MCP has no trash tools, and `list_projects` excludes trashed projects |
 | Status codes | As the reference, including state create = 200 and add-to-cycle/module = 200 |
 | Rate limiting | Off by default (`MOSTLYDONE_RATE_LIMIT`). When on: in-memory token bucket per credential, refilling continuously at rpm/60 per second up to the burst size. Key = SHA-256 of the API token, or the user id for cookie sessions (all of a user's browser sessions share one bucket). Applies to every `/api/v1/` route and `/mcp` (a token's REST and MCP calls share a bucket), only after authentication succeeds; not to `/auth/*`, `/healthz` or the web UI. Every limited response carries `X-RateLimit-Limit` (rpm), `X-RateLimit-Remaining` and `X-RateLimit-Reset` (unix seconds when the bucket is full). An empty bucket gives 429, `Retry-After` (seconds to 1 token, rounded up) and `{"detail": "Request was throttled. Expected available in N seconds."}`. A restart clears it. When off: no headers. Login throttle, separate: 10 failed sign-ins from one client address in 15 minutes, then 429 with `Retry-After` until the window ends. In memory; a restart clears it |
-| Roles | 20 admin, 15 member, 5 guest. No per-project membership: every workspace member belongs to every project. Guests can read and comment only. Project members endpoints return the workspace members |
+| Roles | 20 admin, 15 member, 5 guest. No per-project membership: every workspace member belongs to every project. Guests can read and comment only. Project members endpoints return the workspace members. Admins change roles and deactivate users through `/auth/users/{id}`. Each user has one membership row, so there is no remove-member action |
 | Triage state | Not created. New projects get the five visible default states |
 | `cycle_view`, `module_view` | Default `true` (Plane defaults to false). Other feature flags are stored and returned but do nothing |
 | Out-of-scope fields | Returned with Plane's default value (`estimate_point: null`, `type_id: null`, `is_draft: false`, `archived_at: null`, `point: null`, `logo_props: {}` …) and ignored on write. No archive, transfer or summary endpoints. `projects-lite`, `cycles-lite` and `modules-lite` ARE implemented (read-only lists, Plane envelope, no metric counts; `include_archived` accepted and ignored) because Plane's official MCP server lists projects, cycles and modules through them and cannot discover ids without them. Other `-lite` endpoints (`members-lite`, `project-members-lite`) remain out of scope |
