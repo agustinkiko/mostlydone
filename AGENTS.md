@@ -33,6 +33,11 @@ There is no shared dev environment. Run the binary locally (see Ports).
   such as `/tmp/md-011.db` and stop the server when done.
 - Engine: AI-assisted coding and writing goes through
   `claude -p --model sonnet`. Sonnet only, never Opus.
+- Branch names: `agent/<ticket>-<slug>-<suffix>`, where the suffix is 4
+  random lowercase hex chars from `openssl rand -hex 2`. Example:
+  `agent/md-012-user-prefs-3fa9`. Do not derive the suffix from the tip
+  commit: every branch cut from the same main would get the same 4 chars and
+  collide. Branches that already exist keep their names.
 - 3-strike rule: if a build, test, or lint loop fails 3 times, stop. Add an
   entry to `/workspace/ops/blockers.md` (same format as existing entries,
   PHT timestamp, owner MostlyDone-Lead) and report it.
