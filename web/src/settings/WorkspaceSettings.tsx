@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from "react";
 import { Link } from "wouter";
 import { errorText } from "../api/client";
-import { auth, workspaceMembers } from "../api/endpoints";
-import { ROLE_ADMIN, ROLE_GUEST, ROLE_MEMBER, type Member, type Token } from "../api/types";
+import { auth, projects as projectsApi, workspaceMembers } from "../api/endpoints";
+import { ROLE_ADMIN, ROLE_GUEST, ROLE_MEMBER, type Member, type Token, type TrashedProject } from "../api/types";
 import { useIsAdmin, useSession } from "../app/session";
 import { TopBar } from "../app/Shell";
 import { Avatar, Empty, ErrorBox, fieldError, generalError, Loading, userName } from "../components/bits";
@@ -16,7 +16,7 @@ const ROLE_NAME: Record<number, string> = { [ROLE_ADMIN]: "Admin", [ROLE_MEMBER]
 
 export function WorkspaceSettings({ tab }: { tab: string }) {
   const isAdmin = useIsAdmin();
-  const tabs = [...(isAdmin ? [["members", "Members"]] : []), ["tokens", "API tokens & MCP"]];
+  const tabs = [...(isAdmin ? [["members", "Members"], ["trash", "Trash"]] : []), ["tokens", "API tokens & MCP"]];
   return (
     <>
       <TopBar title="Workspace settings" />
@@ -28,8 +28,9 @@ export function WorkspaceSettings({ tab }: { tab: string }) {
       <div className="page">
         <div className="page-pad">
           {tab === "members" && (isAdmin ? <Members /> : <p className="muted">Only admins can see the member list.</p>)}
+          {tab === "trash" && (isAdmin ? <Trash /> : <p className="muted">Only admins can see the trash.</p>)}
           {tab === "tokens" && <Tokens />}
-          {tab !== "members" && tab !== "tokens" && <Empty title="Unknown settings page" />}
+          {tab !== "members" && tab !== "trash" && tab !== "tokens" && <Empty title="Unknown settings page" />}
         </div>
       </div>
     </>
@@ -69,6 +70,66 @@ function Members() {
       </section>
       <AddUser onAdded={(m) => setList((l) => [...(l ?? []), m])} />
     </>
+  );
+}
+
+function Trash() {
+  const { reloadProjects } = useSession();
+  const [list, setList] = useState<TrashedProject[] | undefined>();
+  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [purging, setPurging] = useState<TrashedProject | null>(null);
+  const load = useCallback(() => {
+    setError("");
+    projectsApi.trashed().then(setList, (e) => setError(errorText(e)));
+  }, []);
+  useEffect(load, [load]);
+
+  const restore = async (p: TrashedProject) => {
+    setActionError("");
+    try {
+      await projectsApi.restore(p.id);
+      setList((l) => l?.filter((x) => x.id !== p.id));
+      await reloadProjects();
+    } catch (e) {
+      setActionError(errorText(e));
+    }
+  };
+
+  return (
+    <section className="settings-section">
+      <h2>Trash</h2>
+      <p className="muted">Deleted projects are kept for 30 days and can be restored. After that they are deleted permanently.</p>
+      {error && <ErrorBox error={error} onRetry={load} />}
+      {actionError && <p className="err" role="alert">{actionError}</p>}
+      {!list && !error && <Loading />}
+      {list && (
+        <div className="list-card">
+          {list.length === 0 && <div className="list-row muted">The trash is empty.</div>}
+          {list.map((p) => (
+            <div key={p.id} className="list-row">
+              <div className="grow">
+                <div>{p.name} <span className="muted mono">{p.identifier}</span></div>
+                <div className="muted small">Deleted {formatDateTime(p.deleted_at)} · purged after {formatDateTime(p.purge_at)}</div>
+              </div>
+              <button type="button" className="btn small" onClick={() => restore(p)}>Restore</button>
+              <button type="button" className="btn small danger" onClick={() => setPurging(p)}>Delete permanently</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {purging && (
+        <ConfirmDialog
+          title="Delete permanently?" confirmLabel="Delete permanently" typeToConfirm={purging.name}
+          message={<p>This permanently deletes <strong>{purging.name}</strong> ({purging.identifier}) and everything in it. This cannot be undone.</p>}
+          onClose={() => setPurging(null)}
+          onConfirm={async () => {
+            await projectsApi.purge(purging.id);
+            setList((l) => l?.filter((x) => x.id !== purging.id));
+          }}
+        />
+      )}
+    </section>
   );
 }
 

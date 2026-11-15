@@ -36,6 +36,10 @@ const (
 type Store struct {
 	w *sql.DB
 	r *sql.DB
+
+	// TrashRetention is how long a deleted project stays restorable.
+	TrashRetention time.Duration
+	now            func() time.Time // clock; injectable for tests
 }
 
 // Open opens (creating if needed) the database file and applies migrations.
@@ -62,7 +66,7 @@ func Open(path string) (*Store, error) {
 	}
 	r.SetMaxOpenConns(4)
 	r.SetMaxIdleConns(4)
-	return &Store{w: w, r: r}, nil
+	return &Store{w: w, r: r, TrashRetention: DefaultTrashRetention, now: time.Now}, nil
 }
 
 // Close closes both handles.

@@ -33,6 +33,11 @@ func (a *API) routes(mux *http.ServeMux) {
 	h("PATCH "+pj+"/", admin, updateProject)
 	h("DELETE "+pj+"/", admin, deleteProject)
 
+	// Project trash: an extension, not part of Plane's public API.
+	h("GET "+ws+"/trashed-projects/", admin, listTrashedProjects)
+	h("POST "+ws+"/trashed-projects/{id}/restore/", admin, restoreProject)
+	h("DELETE "+ws+"/trashed-projects/{id}/", admin, purgeProject)
+
 	h("GET "+pj+"/states/", guest, listStates)
 	h("POST "+pj+"/states/", admin, createState)
 	h("GET "+pj+"/states/{id}/", guest, getState)
@@ -197,6 +202,42 @@ func updateProject(c *rc) {
 
 func deleteProject(c *rc) {
 	if err := c.a.s.DeleteProject(c.r.Context(), c.ws.ID, c.p.ID); err != nil {
+		c.fail(err)
+		return
+	}
+	c.noContent()
+}
+
+// --- project trash ---
+
+func trashedJSON(c *rc, p *store.Project) map[string]any {
+	o := projectJSON(p, c.role)
+	if p.DeletedAt != nil {
+		o["purge_at"] = c.a.s.PurgeAt(*p.DeletedAt)
+	}
+	return o
+}
+
+func listTrashedProjects(c *rc) {
+	list, err := c.a.s.ListTrashedProjects(c.r.Context(), c.ws.ID)
+	if err != nil {
+		c.fail(err)
+		return
+	}
+	listOf(c, list, func(p *store.Project) map[string]any { return trashedJSON(c, p) })
+}
+
+func restoreProject(c *rc) {
+	p, err := c.a.s.RestoreProject(c.r.Context(), c.ws.ID, c.r.PathValue("id"))
+	if err != nil {
+		c.fail(err)
+		return
+	}
+	c.json(200, projectJSON(p, c.role))
+}
+
+func purgeProject(c *rc) {
+	if err := c.a.s.PurgeProject(c.r.Context(), c.ws.ID, c.r.PathValue("id")); err != nil {
 		c.fail(err)
 		return
 	}

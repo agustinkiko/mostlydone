@@ -41,6 +41,13 @@ export interface Project {
   total_modules: number;
   created_at: string;
   updated_at: string;
+  deleted_at?: string | null;
+}
+
+/** A project in the trash (admin only). purge_at is when it is deleted for good. */
+export interface TrashedProject extends Project {
+  deleted_at: string;
+  purge_at: string;
 }
 
 export type StateGroup = "backlog" | "unstarted" | "started" | "completed" | "cancelled";

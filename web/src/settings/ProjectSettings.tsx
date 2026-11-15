@@ -108,13 +108,13 @@ function Danger({ project }: { project: Project }) {
     <section className="settings-section">
       <h2>Delete project</h2>
       <div className="list-card" style={{ padding: 14 }}>
-        <p>Deleting a project removes all its work items, cycles, modules, comments and history. This cannot be undone.</p>
+        <p>Deleting a project moves it, with all its work items, cycles, modules, comments and history, to the trash for 30 days. A workspace admin can restore it from workspace settings until then; after that it is deleted permanently.</p>
         <button type="button" className="btn danger" onClick={() => setOpen(true)}>Delete this project</button>
       </div>
       {open && (
         <ConfirmDialog
-          title="Delete project?" confirmLabel="Delete project" typeToConfirm={project.name}
-          message={<p>This permanently deletes <strong>{project.name}</strong> ({project.identifier}) and everything in it.</p>}
+          title="Move project to trash?" confirmLabel="Move to trash" typeToConfirm={project.name}
+          message={<p><strong>{project.name}</strong> ({project.identifier}) and everything in it moves to the trash for 30 days and can be restored by an admin. After that it is deleted permanently.</p>}
           onClose={() => setOpen(false)}
           onConfirm={async () => {
             await projectsApi.remove(project.id);

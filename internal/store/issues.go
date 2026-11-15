@@ -56,7 +56,7 @@ const issueCols = `i.id, i.project_id, p.workspace_id, p.identifier, i.sequence_
 	(SELECT ci.cycle_id FROM cycle_issues ci WHERE ci.issue_id = i.id),
 	(SELECT COUNT(*) FROM issues c WHERE c.parent_id = i.id)`
 
-const issueFrom = ` FROM issues i JOIN projects p ON p.id = i.project_id JOIN states s ON s.id = i.state_id`
+const issueFrom = ` FROM issues i JOIN projects p ON p.id = i.project_id AND p.deleted_at IS NULL JOIN states s ON s.id = i.state_id`
 
 func scanIssue(sc interface{ Scan(...any) error }) (*Issue, error) {
 	i := &Issue{}
@@ -322,7 +322,7 @@ func (s *Store) SearchIssues(ctx context.Context, wsID, query, projectID string,
 	args = append(args, limit)
 	rows, err := s.r.QueryContext(ctx, `SELECT i.id, i.name, i.project_id, p.identifier, w.slug, i.sequence_id
 		FROM issues i JOIN projects p ON p.id = i.project_id JOIN workspaces w ON w.id = p.workspace_id
-		WHERE p.workspace_id = ? AND `+cond+` ORDER BY i.created_at DESC LIMIT ?`, args...)
+		WHERE p.deleted_at IS NULL AND p.workspace_id = ? AND `+cond+` ORDER BY i.created_at DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -654,7 +654,7 @@ func issueRef(ctx context.Context, q querier, id *string) *string {
 		return nil
 	}
 	var ref string
-	if q.QueryRowContext(ctx, `SELECT p.identifier || '-' || i.sequence_id FROM issues i JOIN projects p ON p.id = i.project_id WHERE i.id = ?`, *id).Scan(&ref) != nil {
+	if q.QueryRowContext(ctx, `SELECT p.identifier || '-' || i.sequence_id FROM issues i JOIN projects p ON p.id = i.project_id AND p.deleted_at IS NULL WHERE i.id = ?`, *id).Scan(&ref) != nil {
 		return nil
 	}
 	return &ref

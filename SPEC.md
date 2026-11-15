@@ -83,11 +83,11 @@ docs/                   plane-api-reference.md, REA capture notes
 ## Data model
 
 IDs are UUID v4 strings. Timestamps are RFC 3339 UTC strings. Dates are `YYYY-MM-DD`.
-Foreign keys on, `ON DELETE CASCADE` for children. Hard deletes.
+Foreign keys on, `ON DELETE CASCADE` for children. Hard deletes, except projects: deleting a project moves it to a 30-day trash (`projects.deleted_at`) and it is hard-deleted when purged.
 
 - `users`, `sessions`, `api_tokens`
 - `workspaces` (name, slug unique), `workspace_members` (role)
-- `projects` (workspace, name, identifier unique per workspace, description, next issue sequence)
+- `projects` (workspace, name, identifier unique per workspace, description, next issue sequence, `deleted_at` — NULL means live, set means in the trash)
 - `states` (project, name, color, group: backlog | unstarted | started | completed | cancelled, sequence, default flag)
 - `labels` (project, name, color)
 - `issues` (project, sequence_id unique per project, name, description_html, state, priority: urgent | high | medium | low | none, parent, start_date, target_date, sort_order, created_by, completed_at)
@@ -119,7 +119,8 @@ Rulings where the reference is ambiguous or we differ on purpose:
 | Error bodies | Reference section 1 shapes: field errors `{"field": ["msg"]}`, view errors `{"error": "msg"}`, 409 adds `"id"` |
 | Pagination | Reference envelope and cursor, source form of `prev_cursor`. `per_page` default 100, max 1000 |
 | Datetimes out | UTC, `2006-01-02T15:04:05.000000Z` |
-| Deletes | Hard delete. `deleted_at` is always `null` in responses |
+| Deletes | Work items, comments, links, states, labels, cycles and modules are hard-deleted. **Projects go to a 30-day trash**: `DELETE .../projects/{pid}/` (admin) returns 204 and sets `deleted_at`. A trashed project and everything in it is invisible and read/write-blocked everywhere (REST, workspace-level identifier and search routes, MCP: 404 / "unknown project"); live project responses keep `deleted_at: null`. It keeps its identifier and name until purged, so creating a project that collides with a trashed one is 409 ("... is used by a project in the trash; restore it or delete it permanently"). Retention is 30 days. The server purges expired projects (hard delete, cascading) at startup and then hourly |
+| Project trash (extension, not in Plane's public API) | Admin only. `GET /workspaces/{ws}/trashed-projects/` lists trashed projects in the list envelope, newest deleted first, as project objects with the real `deleted_at` plus `purge_at` (`deleted_at` + 30 days). `POST .../trashed-projects/{id}/restore/` returns 200 with the restored project (`deleted_at: null`; 404 if not trashed or past retention; 409 if a live project took its name or identifier). `DELETE .../trashed-projects/{id}/` permanently deletes it now (204; 404 if not in the trash). The web UI exposes this under workspace settings → Trash. MCP has no trash tools, and `list_projects` excludes trashed projects |
 | Status codes | As the reference, including state create = 200 and add-to-cycle/module = 200 |
 | Rate limiting | None on the API, no rate-limit headers. Login only: 10 failed sign-ins from one client address in 15 minutes, then 429 with `Retry-After` until the window ends. In memory; a restart clears it |
 | Roles | 20 admin, 15 member, 5 guest. No per-project membership: every workspace member belongs to every project. Guests can read and comment only. Project members endpoints return the workspace members |

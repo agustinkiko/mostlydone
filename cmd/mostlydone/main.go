@@ -105,6 +105,11 @@ func main() {
 
 	stop, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+	purged := make(chan struct{})
+	go func() {
+		defer close(purged)
+		s.RunTrashPurge(stop, time.Hour, log.Printf)
+	}()
 	go func() {
 		log.Printf("listening on %s (db %s, workspace %q)", addr, dbPath, slug)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -118,4 +123,5 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("shutdown: %v", err)
 	}
+	<-purged // don't close the database under a running purge
 }

@@ -79,7 +79,7 @@ func TestMigrationsIdempotent(t *testing.T) {
 			t.Fatal(err)
 		}
 		var n int
-		if err := s.r.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil || n != 1 {
+		if err := s.r.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil || n != 2 {
 			t.Fatalf("schema_migrations rows = %d, %v", n, err)
 		}
 		var mode string
@@ -299,14 +299,18 @@ func TestCascadeDeletes(t *testing.T) {
 			t.Errorf("%s rows left: %d", table, n)
 		}
 	}
+	// Projects go to the trash first; purging is what hard-deletes them.
 	if err := f.s.DeleteProject(ctx, f.ws.ID, f.p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.PurgeProject(ctx, f.ws.ID, f.p.ID); err != nil {
 		t.Fatal(err)
 	}
 	for _, table := range []string{"issues", "states", "labels", "activities"} {
 		var n int
 		f.s.r.QueryRow(`SELECT COUNT(*) FROM `+table+` WHERE project_id = ?`, f.p.ID).Scan(&n)
 		if n != 0 {
-			t.Errorf("%s rows left after project delete: %d", table, n)
+			t.Errorf("%s rows left after project purge: %d", table, n)
 		}
 	}
 }

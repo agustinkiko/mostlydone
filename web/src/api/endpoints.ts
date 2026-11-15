@@ -3,7 +3,7 @@
 import { api, fetchAllPages, request } from "./client";
 import type {
   Activity, Comment, Cycle, Issue, IssueInput, IssueLink, Label, Me, Member, Module, Page, Project,
-  SearchHit, State, Token, User,
+  SearchHit, State, Token, TrashedProject, User,
 } from "./types";
 
 let slug = "main";
@@ -43,6 +43,10 @@ export const projects = {
   update: (pid: string, body: Partial<Pick<Project, "name" | "identifier" | "description">>) => api.patch<Project>(`${pj(pid)}/`, body),
   remove: (pid: string) => api.del(`${pj(pid)}/`),
   members: (pid: string) => api.get<User[]>(`${pj(pid)}/members/`),
+  // Trash (admin only): remove() above moves a project here for 30 days.
+  trashed: () => all<TrashedProject>(`${ws()}/trashed-projects/`),
+  restore: (id: string) => api.post<Project>(`${ws()}/trashed-projects/${id}/restore/`, {}),
+  purge: (id: string) => api.del(`${ws()}/trashed-projects/${id}/`),
 };
 
 // --- states and labels ---

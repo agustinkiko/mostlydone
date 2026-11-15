@@ -59,7 +59,7 @@ func projectJSON(p *store.Project, role int) map[string]any {
 		"total_members": p.TotalMembers, "total_cycles": p.TotalCycles, "total_modules": p.TotalModules,
 		"is_member": true, "member_role": role, "is_deployed": false, "sort_order": nil,
 		"created_by": str(p.CreatedBy), "updated_by": str(p.UpdatedBy),
-		"created_at": p.CreatedAt, "updated_at": p.UpdatedAt, "deleted_at": nil,
+		"created_at": p.CreatedAt, "updated_at": p.UpdatedAt, "deleted_at": str(p.DeletedAt),
 	}
 }
 

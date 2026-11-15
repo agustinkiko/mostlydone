@@ -24,6 +24,7 @@ type Project struct {
 	ExternalSource, ExternalID                     *string
 	CreatedBy, UpdatedBy                           *string
 	CreatedAt, UpdatedAt                           string
+	DeletedAt                                      *string // set while in the trash
 	TotalMembers, TotalCycles, TotalModules        int
 }
 
@@ -60,7 +61,8 @@ const projectCols = `p.id, p.workspace_id, p.name, p.identifier, p.description, 
 	p.external_source, p.external_id, p.created_by, p.updated_by, p.created_at, p.updated_at,
 	(SELECT COUNT(*) FROM workspace_members m WHERE m.workspace_id = p.workspace_id),
 	(SELECT COUNT(*) FROM cycles c WHERE c.project_id = p.id),
-	(SELECT COUNT(*) FROM modules d WHERE d.project_id = p.id)`
+	(SELECT COUNT(*) FROM modules d WHERE d.project_id = p.id),
+	p.deleted_at`
 
 func scanProject(sc interface{ Scan(...any) error }) (*Project, error) {
 	p := &Project{}
@@ -68,7 +70,7 @@ func scanProject(sc interface{ Scan(...any) error }) (*Project, error) {
 		&p.Emoji, &p.CoverImage, &p.IconProp, &p.ModuleView, &p.CycleView, &p.IssueViewsView, &p.PageView, &p.IntakeView,
 		&p.IsTimeTrackingEnabled, &p.IsIssueTypeEnabled, &p.GuestViewAllFeatures, &p.ArchiveIn, &p.CloseIn, &p.Timezone,
 		&p.ExternalSource, &p.ExternalID, &p.CreatedBy, &p.UpdatedBy, &p.CreatedAt, &p.UpdatedAt,
-		&p.TotalMembers, &p.TotalCycles, &p.TotalModules)
+		&p.TotalMembers, &p.TotalCycles, &p.TotalModules, &p.DeletedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -79,7 +81,7 @@ var projectOrder = map[string]string{"created_at": "p.created_at", "updated_at":
 
 // ListProjects lists the workspace's projects.
 func (s *Store) ListProjects(ctx context.Context, wsID, orderBy string) ([]*Project, error) {
-	rows, err := s.r.QueryContext(ctx, `SELECT `+projectCols+` FROM projects p WHERE p.workspace_id = ? ORDER BY `+
+	rows, err := s.r.QueryContext(ctx, `SELECT `+projectCols+` FROM projects p WHERE p.deleted_at IS NULL AND p.workspace_id = ? ORDER BY `+
 		orderClause(orderBy, projectOrder, "p.created_at ASC")+`, p.id`, wsID)
 	if err != nil {
 		return nil, err
@@ -102,12 +104,12 @@ func (s *Store) GetProject(ctx context.Context, wsID, id string) (*Project, erro
 }
 
 func getProject(ctx context.Context, q querier, wsID, id string) (*Project, error) {
-	return scanProject(q.QueryRowContext(ctx, `SELECT `+projectCols+` FROM projects p WHERE p.workspace_id = ? AND p.id = ?`, wsID, id))
+	return scanProject(q.QueryRowContext(ctx, `SELECT `+projectCols+` FROM projects p WHERE p.deleted_at IS NULL AND p.workspace_id = ? AND p.id = ?`, wsID, id))
 }
 
 // ProjectByRef finds a project by id, identifier (case-insensitive) or name.
 func (s *Store) ProjectByRef(ctx context.Context, wsID, ref string) (*Project, error) {
-	return scanProject(s.r.QueryRowContext(ctx, `SELECT `+projectCols+` FROM projects p WHERE p.workspace_id = ?
+	return scanProject(s.r.QueryRowContext(ctx, `SELECT `+projectCols+` FROM projects p WHERE p.deleted_at IS NULL AND p.workspace_id = ?
 		AND (p.id = ? OR p.identifier = upper(?) OR lower(p.name) = lower(?)) ORDER BY p.id = ? DESC LIMIT 1`, wsID, ref, ref, ref, ref))
 }
 
@@ -118,7 +120,7 @@ func (s *Store) ProjectsByIDs(ctx context.Context, ids []string) (map[string]*Pr
 		return out, nil
 	}
 	ph, args := in(dedupe(ids))
-	rows, err := s.r.QueryContext(ctx, `SELECT `+projectCols+` FROM projects p WHERE p.id IN `+ph, args...)
+	rows, err := s.r.QueryContext(ctx, `SELECT `+projectCols+` FROM projects p WHERE p.deleted_at IS NULL AND p.id IN `+ph, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -232,14 +234,11 @@ func (in *ProjectInput) apply(ctx context.Context, q querier, p *Project) error 
 		}
 	}
 	// Blank or duplicate identifiers are 409 in Plane, with a string message.
-	var other string
-	err := q.QueryRowContext(ctx, `SELECT id FROM projects WHERE workspace_id = ? AND identifier = ? AND id != ?`, p.WorkspaceID, p.Identifier, p.ID).Scan(&other)
-	if p.Identifier == "" || err == nil {
+	if p.Identifier == "" {
 		return &Error{Kind: KindConflict, Field: "identifier", Msg: "The project identifier is already taken"}
 	}
-	err = q.QueryRowContext(ctx, `SELECT id FROM projects WHERE workspace_id = ? AND name = ? AND id != ?`, p.WorkspaceID, p.Name, p.ID).Scan(&other)
-	if err == nil {
-		return &Error{Kind: KindConflict, Field: "name", Msg: "The project name is already taken"}
+	if err := checkProjectTaken(ctx, q, p); err != nil {
+		return err
 	}
 	return checkExternal(ctx, q, "projects", "workspace_id", p.WorkspaceID, p.ExternalSource, p.ExternalID, p.ID, "Project")
 }
@@ -305,14 +304,29 @@ func (s *Store) UpdateProject(ctx context.Context, wsID, id, actor string, in Pr
 	return out, err
 }
 
-// DeleteProject hard-deletes a project and everything in it.
-func (s *Store) DeleteProject(ctx context.Context, wsID, id string) error {
-	res, err := s.w.ExecContext(ctx, `DELETE FROM projects WHERE workspace_id = ? AND id = ?`, wsID, id)
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return ErrNotFound
+// checkProjectTaken returns a 409 if another project (live or trashed) of the
+// workspace already has p's identifier or name. Trashed projects keep their
+// identifier and name until purged.
+func checkProjectTaken(ctx context.Context, q querier, p *Project) error {
+	for _, c := range []struct{ field, col, val string }{
+		{"identifier", "identifier", p.Identifier},
+		{"name", "name", p.Name},
+	} {
+		var other string
+		var deleted *string
+		err := q.QueryRowContext(ctx, `SELECT id, deleted_at FROM projects WHERE workspace_id = ? AND `+c.col+` = ? AND id != ?`,
+			p.WorkspaceID, c.val, p.ID).Scan(&other, &deleted)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		msg := "The project " + c.field + " is already taken"
+		if deleted != nil {
+			msg = "The project " + c.field + " is used by a project in the trash; restore it or delete it permanently"
+		}
+		return &Error{Kind: KindConflict, Field: c.field, Msg: msg}
 	}
 	return nil
 }
