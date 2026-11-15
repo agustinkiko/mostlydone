@@ -1,4 +1,4 @@
-// Command mostlydone serves Mostlydone: REST API, MCP and web UI from one
+// Command mostlydone serves MostlyDone: REST API, MCP and web UI from one
 // binary and one SQLite file.
 package main
 

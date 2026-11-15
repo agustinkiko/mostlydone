@@ -1,4 +1,4 @@
-# Mostlydone build. `make build` needs Node (npm) and Go.
+# MostlyDone build. `make build` needs Node (npm) and Go.
 
 GO_LDFLAGS := -s -w
 

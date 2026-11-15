@@ -20,8 +20,8 @@ var embedded embed.FS
 
 const placeholder = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mostlydone</title></head>
-<body><h1>Mostlydone</h1><p>The web UI is not built. Run <code>make ui</code>, then rebuild. The REST API is at <code>/api/v1/</code>.</p></body></html>
+<title>MostlyDone</title></head>
+<body><h1>MostlyDone</h1><p>The web UI is not built. Run <code>make ui</code>, then rebuild. The REST API is at <code>/api/v1/</code>.</p></body></html>
 `
 
 // CSP allows only same-origin scripts; inline styles are allowed because

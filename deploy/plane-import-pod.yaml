@@ -1,11 +1,11 @@
-# One-off: loads the Plane export into Paperplane's database. Paperplane must be
+# One-off: loads the Plane export into MostlyDone's database. MostlyDone must be
 # scaled to 0 first (one SQLite file, one writer). The importer binary and the
-# export file come from ~/paperplane/import on the node.
+# export file come from ~/mostlydone/import on the node.
 apiVersion: v1
 kind: Pod
 metadata:
   name: plane-import
-  namespace: paperplane
+  namespace: mostlydone
 spec:
   restartPolicy: Never
   automountServiceAccountToken: false
@@ -18,9 +18,9 @@ spec:
       type: RuntimeDefault
   containers:
     - name: import
-      image: paperplane:20261115-2
+      image: mostlydone:20261115-2
       imagePullPolicy: Never
-      command: ["/tools/plane-import", "-db", "/data/paperplane.db", "-from", "/tools/plane-export.json"]
+      command: ["/tools/plane-import", "-db", "/data/mostlydone.db", "-from", "/tools/plane-export.json"]
       securityContext:
         allowPrivilegeEscalation: false
         readOnlyRootFilesystem: true
@@ -37,8 +37,8 @@ spec:
       emptyDir: {}
     - name: data
       persistentVolumeClaim:
-        claimName: paperplane-data
+        claimName: mostlydone-data
     - name: tools
       hostPath:
-        path: /home/echolab/paperplane/import
+        path: /home/echolab/mostlydone/import
         type: Directory

@@ -91,7 +91,7 @@ function AuthForm({ setup, notice, onDone }: { setup?: boolean; notice?: string;
   return (
     <div className="center-page">
       <form className="auth-card" onSubmit={submit} noValidate>
-        <div className="brand" style={{ marginBottom: 16 }}><Logo /> Mostlydone</div>
+        <div className="brand" style={{ marginBottom: 16 }}><Logo /> MostlyDone</div>
         <h1>{setup ? "Set up your workspace" : "Sign in"}</h1>
         <p className="muted">{setup ? "Create the first admin account." : "Use the email and password your admin gave you."}</p>
         {notice && <p className="muted" role="status">{notice}</p>}

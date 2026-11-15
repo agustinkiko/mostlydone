@@ -22,8 +22,8 @@ func TestRouting(t *testing.T) {
 		body string
 	}{
 		{"/healthz", 200, "ok"},
-		{"/", 200, "<title>Mostlydone</title>"},
-		{"/projects/WEB/board", 200, "<title>Mostlydone</title>"},
+		{"/", 200, "<title>MostlyDone</title>"},
+		{"/projects/WEB/board", 200, "<title>MostlyDone</title>"},
 		{"/mcp", 401, "detail"},
 		{"/api/v1/users/me/", 401, "detail"},
 		{"/auth/me", 200, "setup_required"},

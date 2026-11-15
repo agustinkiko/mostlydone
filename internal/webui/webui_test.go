@@ -22,8 +22,8 @@ func gz(t *testing.T, s string) []byte {
 
 func testFS(t *testing.T) fstest.MapFS {
 	return fstest.MapFS{
-		"index.html":            {Data: []byte("<!doctype html><title>Mostlydone</title><script type=module src=/assets/app-abc.js></script>")},
-		"index.html.gz":         {Data: gz(t, "<!doctype html><title>Mostlydone</title><script type=module src=/assets/app-abc.js></script>")},
+		"index.html":            {Data: []byte("<!doctype html><title>MostlyDone</title><script type=module src=/assets/app-abc.js></script>")},
+		"index.html.gz":         {Data: gz(t, "<!doctype html><title>MostlyDone</title><script type=module src=/assets/app-abc.js></script>")},
 		"assets/app-abc.js":     {Data: []byte("console.log(1)")},
 		"assets/app-abc.js.gz":  {Data: gz(t, "console.log(1)")},
 		"assets/style-abc.css":  {Data: []byte("body{}")},
@@ -47,7 +47,7 @@ func TestSPAFallback(t *testing.T) {
 	h := newHandler(testFS(t))
 	for _, p := range []string{"/", "/p/WEB/items", "/p/WEB/items/WEB-12?state_group=started", "/settings/tokens", "/index.html", "/a/../b"} {
 		w := get(h, p, nil)
-		if w.Code != 200 || !strings.Contains(w.Body.String(), "<title>Mostlydone</title>") {
+		if w.Code != 200 || !strings.Contains(w.Body.String(), "<title>MostlyDone</title>") {
 			t.Errorf("GET %s: %d %q", p, w.Code, w.Body.String())
 		}
 		if got := w.Header().Get("Cache-Control"); got != "no-cache" {
@@ -158,7 +158,7 @@ func TestSecurityHeaders(t *testing.T) {
 func TestPlaceholderWhenUnbuilt(t *testing.T) {
 	h := newHandler(fstest.MapFS{".keep": {Data: nil}})
 	w := get(h, "/p/WEB/board", nil)
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "<title>Mostlydone</title>") || !strings.Contains(w.Body.String(), "not built") {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "<title>MostlyDone</title>") || !strings.Contains(w.Body.String(), "not built") {
 		t.Errorf("placeholder: %d %q", w.Code, w.Body.String())
 	}
 	if w := get(h, "/assets/app.js", nil); w.Code != 404 {
@@ -169,7 +169,7 @@ func TestPlaceholderWhenUnbuilt(t *testing.T) {
 func TestEmbeddedHandler(t *testing.T) {
 	// Works whether or not the UI was built.
 	w := get(Handler(), "/", nil)
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "<title>Mostlydone</title>") {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "<title>MostlyDone</title>") {
 		t.Errorf("embedded: %d %q", w.Code, w.Body.String())
 	}
 }

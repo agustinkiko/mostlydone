@@ -1,8 +1,8 @@
 // Command plane-import loads a JSON export of an old Plane database
-// (see deploy/plane-export.sql) into a Mostlydone database file.
+// (see deploy/plane-export.sql) into a MostlyDone database file.
 //
 // It is a one-off tool. It writes straight into the SQLite file, so the
-// Mostlydone server must be stopped first. It keeps Plane's ids, work item
+// MostlyDone server must be stopped first. It keeps Plane's ids, work item
 // numbers, dates, authors and ordering. Everything goes in one transaction:
 // either all of it lands or none of it. Before writing, it saves a copy of the
 // database next to it as <db>.before-plane-import-<time>.
@@ -115,9 +115,9 @@ type export struct {
 const src = "plane"
 
 func main() {
-	dbPath := flag.String("db", "", "Mostlydone SQLite file (server must be stopped)")
+	dbPath := flag.String("db", "", "MostlyDone SQLite file (server must be stopped)")
 	from := flag.String("from", "", "JSON export of the old Plane data")
-	slug := flag.String("workspace", "main", "slug of the Mostlydone workspace to import into")
+	slug := flag.String("workspace", "main", "slug of the MostlyDone workspace to import into")
 	flag.Parse()
 	if *dbPath == "" || *from == "" {
 		flag.Usage()
@@ -191,7 +191,7 @@ func load(tx *sql.Tx, ex *export, slug string) ([]count, error) {
 		return nil, fmt.Errorf("workspace %q: %w", slug, err)
 	}
 
-	// Plane users are matched to existing Mostlydone users by email. This tool
+	// Plane users are matched to existing MostlyDone users by email. This tool
 	// never creates a user (it would have no password). Plane's own bot user is
 	// not in the export; ids that are not matched become NULL (author unknown).
 	user := map[string]string{}
@@ -199,7 +199,7 @@ func load(tx *sql.Tx, ex *export, slug string) ([]count, error) {
 		var id string
 		err := tx.QueryRow(`SELECT id FROM users WHERE email = ?`, u.Email).Scan(&id)
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("Plane user %s has no Mostlydone account; create it first", u.Email)
+			return nil, fmt.Errorf("Plane user %s has no MostlyDone account; create it first", u.Email)
 		}
 		if err != nil {
 			return nil, err

@@ -1,5 +1,5 @@
 # Temporary, read-only look at the old Plane database. Used once to import
-# Plane's data into Paperplane, then deleted. The old data volume is mounted
+# Plane's data into MostlyDone, then deleted. The old data volume is mounted
 # read-only; Postgres runs on a copy in a scratch directory that disappears
 # with the pod. Nothing here changes Plane's own data.
 apiVersion: v1

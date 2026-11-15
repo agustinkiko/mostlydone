@@ -1,4 +1,4 @@
-# Mostlydone — spec
+# MostlyDone — spec
 
 A small, self-hosted project tracker modeled on Plane's core features.
 One Go binary, one SQLite file, web UI embedded. New code only: Plane is

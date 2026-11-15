@@ -27,7 +27,7 @@ export function Sidebar() {
   return (
     <nav className="sidebar" aria-label="Main">
       <div className="sidebar-head">
-        <span className="brand"><Logo /> Mostlydone</span>
+        <span className="brand"><Logo /> MostlyDone</span>
         <span className="spacer" />
         <button type="button" className="icon-btn" aria-label="Search work items (Ctrl+K)" title="Search (Ctrl/⌘ K)" onClick={openPalette}>
           <IconSearch />

@@ -116,7 +116,7 @@ function Home() {
   if (projectsError) {
     return (
       <>
-        <TopBar title="Mostlydone" />
+        <TopBar title="MostlyDone" />
         <Empty title="Could not load projects">
           <p>{projectsError}</p>
           <button type="button" className="btn" onClick={() => void reloadProjects()}>Try again</button>
@@ -128,7 +128,7 @@ function Home() {
   if (projects.length) return <Redirect to={`/p/${projects[0].identifier}/items`} replace />;
   return (
     <>
-      <TopBar title="Mostlydone" />
+      <TopBar title="MostlyDone" />
       <Empty title="No projects yet">
         <p>{role >= 15 ? "Create a project from the sidebar to start tracking work." : "Ask an admin to create a project."}</p>
       </Empty>

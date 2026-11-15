@@ -1,6 +1,6 @@
 -- Reads the old Plane database and prints ONE JSON document with everything
--- Paperplane's importer needs. Read-only. Soft-deleted rows, drafts and
--- archived items are left out. Times are UTC in Paperplane's format.
+-- MostlyDone's importer needs. Read-only. Soft-deleted rows, drafts and
+-- archived items are left out. Times are UTC in MostlyDone's format.
 \pset tuples_only on
 \pset format unaligned
 select json_build_object(

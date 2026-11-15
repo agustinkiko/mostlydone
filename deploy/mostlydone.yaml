@@ -1,26 +1,29 @@
-# Mostlydone on the homelab k3s node (single node, Traefik, local-path storage).
+# MostlyDone on the homelab k3s node (single node, Traefik, local-path storage).
 #
-# The app was first deployed under the name Paperplane. The Kubernetes names
-# below (namespace, deployment, service, PVC, secret) keep that name on purpose,
-# so the database volume does not have to move.
+# Kubernetes names: namespace, deployment, service, PVC "mostlydone-data" and
+# Secret "mostlydone-admin". MD-002 (2026-11-15) renamed these from the app's
+# earlier name. The live cluster may still run under the old names, so DO NOT
+# just `kubectl apply` this file over a running install. Do the cutover in
+# deploy/CUTOVER.md first, or the app starts on a new, empty volume and fails
+# until the new Secret exists.
 #
 # Not in this file, on purpose:
-#   - Secret "paperplane-admin" (keys: email, password). Created once by hand so
+#   - Secret "mostlydone-admin" (keys: email, password). Created once by hand so
 #     the password is never written to disk here.
 #   - The image. It is a local image (no registry). Load it on the node with:
 #       sudo k3s ctr -n k8s.io images import mostlydone-<tag>.tar
 #
-# Apply:  kubectl apply -f deploy/paperplane.yaml
+# Apply:  kubectl apply -f deploy/mostlydone.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: paperplane
+  name: mostlydone
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: paperplane-data
-  namespace: paperplane
+  name: mostlydone-data
+  namespace: mostlydone
 spec:
   accessModes: ["ReadWriteOnce"]
   storageClassName: local-path
@@ -31,10 +34,10 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: paperplane
-  namespace: paperplane
+  name: mostlydone
+  namespace: mostlydone
   labels:
-    app: paperplane
+    app: mostlydone
 spec:
   replicas: 1
   # One SQLite file, one writer: never run two pods at once.
@@ -42,11 +45,11 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: paperplane
+      app: mostlydone
   template:
     metadata:
       labels:
-        app: paperplane
+        app: mostlydone
     spec:
       automountServiceAccountToken: false
       securityContext:
@@ -57,7 +60,7 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: paperplane
+        - name: mostlydone
           image: mostlydone:20261115
           imagePullPolicy: Never
           ports:
@@ -67,7 +70,7 @@ spec:
             - name: MOSTLYDONE_ADDR
               value: ":8080"
             - name: MOSTLYDONE_DB
-              value: /data/paperplane.db
+              value: /data/mostlydone.db
             # The public URL is HTTPS (Cloudflare), so cookies are HTTPS-only.
             - name: MOSTLYDONE_SECURE_COOKIES
               value: "true"
@@ -79,12 +82,12 @@ spec:
             - name: MOSTLYDONE_ADMIN_EMAIL
               valueFrom:
                 secretKeyRef:
-                  name: paperplane-admin
+                  name: mostlydone-admin
                   key: email
             - name: MOSTLYDONE_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: paperplane-admin
+                  name: mostlydone-admin
                   key: password
           resources:
             requests:
@@ -118,18 +121,18 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: paperplane-data
+            claimName: mostlydone-data
         - name: tmp
           emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: paperplane
-  namespace: paperplane
+  name: mostlydone
+  namespace: mostlydone
 spec:
   selector:
-    app: paperplane
+    app: mostlydone
   ports:
     - name: http
       port: 80
@@ -138,8 +141,8 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: paperplane
-  namespace: paperplane
+  name: mostlydone
+  namespace: mostlydone
 spec:
   ingressClassName: traefik
   rules:
@@ -150,7 +153,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: paperplane
+                name: mostlydone
                 port:
                   number: 80
     # For when the mostlydone.app domain is registered and connected.
@@ -161,17 +164,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: paperplane
-                port:
-                  number: 80
-    # Old address, kept until mostlydone.app works.
-    - host: paperplane.jericoagustin.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: paperplane
+                name: mostlydone
                 port:
                   number: 80
