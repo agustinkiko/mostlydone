@@ -171,6 +171,7 @@ func TestEndToEnd(t *testing.T) {
 
 	ok(t, cs, "create_label", map[string]any{"project": "Website Redesign", "name": "Bug", "color": "#ff0000"})
 	ok(t, cs, "create_label", map[string]any{"project": "WEB", "name": "UI"})
+	fails(t, cs, "create_label", map[string]any{"project": "WEB", "name": "Bad", "color": "blue"}, "hex color")
 	if n := len(ok(t, cs, "list_labels", map[string]any{"project": "WEB"}).([]any)); n != 2 {
 		t.Fatalf("labels = %d", n)
 	}

@@ -191,9 +191,9 @@ func TestEndToEnd(t *testing.T) {
 		stateID[m["group"].(string)] = m["id"].(string)
 	}
 	review := api.must(200, "POST", PJ+"/states/", map[string]any{"name": "Review", "color": "#123456", "group": "started"})
-	eq(t, "state dup 409", api.must(409, "POST", PJ+"/states/", map[string]any{"name": "Review", "color": "#000"})["id"], review["id"])
-	api.must(400, "POST", PJ+"/states/", map[string]any{"name": "T", "color": "#000", "group": "triage"})
-	bug := api.must(201, "POST", PJ+"/labels/", map[string]any{"name": "bug", "color": "#f00"})
+	eq(t, "state dup 409", api.must(409, "POST", PJ+"/states/", map[string]any{"name": "Review", "color": "#000000"})["id"], review["id"])
+	api.must(400, "POST", PJ+"/states/", map[string]any{"name": "T", "color": "#000000", "group": "triage"})
+	bug := api.must(201, "POST", PJ+"/labels/", map[string]any{"name": "bug", "color": "#ff0000"})
 	feat := api.must(201, "POST", PJ+"/labels/", map[string]any{"name": "feature"})
 	api.must(409, "POST", PJ+"/labels/", map[string]any{"name": "bug"})
 	bugID, featID := bug["id"].(string), feat["id"].(string)

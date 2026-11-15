@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"strings"
 )
 
@@ -141,12 +142,17 @@ var defaultStates = []struct {
 	name, group, color string
 	seq                float64
 }{
-	{"Backlog", "backlog", "#60646C", 15000},
-	{"Todo", "unstarted", "#60646C", 25000},
-	{"In Progress", "started", "#F59E0B", 35000},
-	{"Done", "completed", "#46A758", 45000},
-	{"Cancelled", "cancelled", "#9AA4BC", 55000},
+	{"Backlog", "backlog", "#827F78", 15000},
+	{"Todo", "unstarted", "#7A8597", 25000},
+	{"In Progress", "started", "#AD7206", 35000},
+	{"Done", "completed", "#2A9254", 45000},
+	{"Cancelled", "cancelled", "#837D8E", 55000},
 }
+
+// Checked only when a write sets the color: older rows may hold any string.
+var hexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
+func invalidColor() error { return invalid("color", "Enter a hex color like #1A2B3C.") }
 
 func (in *ProjectInput) apply(ctx context.Context, q querier, p *Project) error {
 	if in.Name.Set {
@@ -460,6 +466,8 @@ func (in *StateInput) apply(st *State) error {
 		return invalid("name", "This field may not be blank.")
 	case st.Color == "":
 		return invalid("color", "This field may not be blank.")
+	case in.Color.Set && !hexColor.MatchString(st.Color):
+		return invalidColor()
 	case st.Group == "triage":
 		return invalid("non_field_errors", "Cannot create triage state")
 	case !validGroup(st.Group):
@@ -659,6 +667,9 @@ func (in *LabelInput) apply(ctx context.Context, q querier, l *Label) error {
 	l.ExternalSource, l.ExternalID = mergeExt(l.ExternalSource, l.ExternalID, in.ExternalSource, in.ExternalID)
 	if l.Name == "" {
 		return invalid("name", "This field may not be blank.")
+	}
+	if in.Color.Set && l.Color != "" && !hexColor.MatchString(l.Color) {
+		return invalidColor()
 	}
 	if l.Parent != nil {
 		var n int

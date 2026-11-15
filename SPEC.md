@@ -160,6 +160,7 @@ Rulings where the reference is ambiguous or we differ on purpose:
 | Modules | A work item may be in many modules. Adding never removes it from another module |
 | `fields` / `expand` | Supported on list and detail GETs. Unknown names ignored. `expand` supports `assignees`, `labels`, `state`, `project`, `parent`, `actor`, `created_by` |
 | Activities | Written in the same transaction as the change (no background task). `verb`: created, updated, deleted. `field`: name, description, state, priority, assignees, labels, parent, start_date, target_date, cycles, modules, link, comment |
+| Colors | State and label colors are `#RRGGBB` when a write sets them (a label may be empty). Stored colors in another format stay as they are and do not block other edits. Plane does not validate, so a Plane client sending another format gets 400. New projects get the five default state colors #827F78, #7A8597, #AD7206, #2A9254, #837D8E (Backlog to Cancelled), which differ from Plane's on purpose for contrast. Existing projects keep their colors |
 | Link titles | No crawler. `title` is whatever the client sends |
 | Project `network` | Stored, default 2, no effect |
 

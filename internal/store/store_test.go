@@ -105,10 +105,14 @@ func TestDefaultStates(t *testing.T) {
 	if len(list) != len(want) {
 		t.Fatalf("got %d states", len(list))
 	}
+	wantColor := []string{"#827F78", "#7A8597", "#AD7206", "#2A9254", "#837D8E"}
 	defaults := 0
 	for k, s := range list {
 		if s.Name != want[k] {
 			t.Errorf("state %d = %s, want %s", k, s.Name, want[k])
+		}
+		if s.Color != wantColor[k] {
+			t.Errorf("%s color = %s, want %s", s.Name, s.Color, wantColor[k])
 		}
 		if s.Default {
 			defaults++
@@ -119,7 +123,7 @@ func TestDefaultStates(t *testing.T) {
 	}
 	// A new default clears the old one.
 	ctx := context.Background()
-	st, err := f.s.CreateState(ctx, f.p.ID, f.admin.ID, StateInput{Name: Some("Review"), Color: Some("#fff"), Group: Some("started"), Default: Some(true)})
+	st, err := f.s.CreateState(ctx, f.p.ID, f.admin.ID, StateInput{Name: Some("Review"), Color: Some("#ffffff"), Group: Some("started"), Default: Some(true)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,8 +137,46 @@ func TestDefaultStates(t *testing.T) {
 	if err := f.s.DeleteState(ctx, f.p.ID, st.ID); kind(err) != KindInvalid {
 		t.Errorf("deleting default state: %v", err)
 	}
-	if _, err := f.s.CreateState(ctx, f.p.ID, f.admin.ID, StateInput{Name: Some("Review"), Color: Some("#fff")}); kind(err) != KindConflict {
+	if _, err := f.s.CreateState(ctx, f.p.ID, f.admin.ID, StateInput{Name: Some("Review"), Color: Some("#ffffff")}); kind(err) != KindConflict {
 		t.Errorf("duplicate state name: %v", err)
+	}
+}
+
+func TestColorValidation(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	started := f.stateByGroup(t, "started")
+	for _, c := range []string{"red", "#FFF", "#12345G", "#1234567"} {
+		if _, err := f.s.CreateState(ctx, f.p.ID, f.admin.ID, StateInput{Name: Some("S" + c), Color: Some(c), Group: Some("started")}); kind(err) != KindInvalid {
+			t.Errorf("create state %q: %v", c, err)
+		}
+		if _, err := f.s.UpdateState(ctx, f.p.ID, started.ID, f.admin.ID, StateInput{Color: Some(c)}); kind(err) != KindInvalid {
+			t.Errorf("update state %q: %v", c, err)
+		}
+	}
+	for _, c := range []string{"#a1b2c3", "#A1B2C3"} {
+		st, err := f.s.CreateState(ctx, f.p.ID, f.admin.ID, StateInput{Name: Some("S" + c), Color: Some(c), Group: Some("started")})
+		if err != nil || st.Color != c {
+			t.Fatalf("create state %q: %v", c, err)
+		}
+		if _, err := f.s.UpdateState(ctx, f.p.ID, st.ID, f.admin.ID, StateInput{Color: Some(c)}); err != nil {
+			t.Errorf("update state %q: %v", c, err)
+		}
+	}
+	if _, err := f.s.CreateLabel(ctx, f.p.ID, f.admin.ID, LabelInput{Name: Some("empty"), Color: Some("")}); err != nil {
+		t.Errorf("empty label color: %v", err)
+	}
+	l, err := f.s.CreateLabel(ctx, f.p.ID, f.admin.ID, LabelInput{Name: Some("ok"), Color: Some("#a1b2c3")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []string{"blue", "#FFF"} {
+		if _, err := f.s.CreateLabel(ctx, f.p.ID, f.admin.ID, LabelInput{Name: Some("L" + c), Color: Some(c)}); kind(err) != KindInvalid {
+			t.Errorf("create label %q: %v", c, err)
+		}
+		if _, err := f.s.UpdateLabel(ctx, f.p.ID, l.ID, f.admin.ID, LabelInput{Color: Some(c)}); kind(err) != KindInvalid {
+			t.Errorf("update label %q: %v", c, err)
+		}
 	}
 }
 
@@ -482,5 +524,28 @@ func TestUserWorkspace(t *testing.T) {
 	}
 	if _, _, err := f.s.UserWorkspace(ctx, "no-such-user"); kind(err) != KindNotFound {
 		t.Fatalf("unknown user: %v", err)
+	}
+}
+
+// Imported or pre-RD-17 rows may hold colors Plane never validated.
+func TestLegacyColorStillEditable(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	st := f.stateByGroup(t, "started")
+	l, err := f.s.CreateLabel(ctx, f.p.ID, f.admin.ID, LabelInput{Name: Some("old"), Color: Some("#a1b2c3")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.s.w.Exec(`UPDATE states SET color = '#fff' WHERE id = ?`, st.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.s.w.Exec(`UPDATE labels SET color = 'red' WHERE id = ?`, l.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := f.s.UpdateState(ctx, f.p.ID, st.ID, f.admin.ID, StateInput{Name: Some("Doing")}); err != nil || got.Color != "#fff" {
+		t.Errorf("rename state with legacy color: %v", err)
+	}
+	if got, err := f.s.UpdateLabel(ctx, f.p.ID, l.ID, f.admin.ID, LabelInput{Name: Some("renamed")}); err != nil || got.Color != "red" {
+		t.Errorf("rename label with legacy color: %v", err)
 	}
 }
