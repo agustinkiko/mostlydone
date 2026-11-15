@@ -8,4 +8,7 @@ web/dist/
 # Built UI: only the placeholder is kept in version control.
 internal/webui/dist/*
 !internal/webui/dist/.keep
-.claude/
+# Agent config: only the shared estack settings are tracked.
+.claude/*
+!.claude/settings.json
+.artifacts/

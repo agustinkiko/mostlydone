@@ -1,0 +1,9 @@
+{
+  "extraKnownMarketplaces": {
+    "estack": { "source": { "source": "github", "repo": "agustinkiko/estack" } }
+  },
+  "enabledPlugins": {
+    "core@estack": true,
+    "personal@estack": true
+  }
+}
