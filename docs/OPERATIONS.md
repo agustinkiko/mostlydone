@@ -26,6 +26,7 @@ mostlydone backup [-db PATH] [-force] DEST
   leaves nothing under `DEST`. DEST's directory is created if missing.
 - Prints one line: path, size, schema version, duration. Exit code is non-zero on
   any failure, so cron and Kubernetes see it.
+- Backups and the `.pre-restore-*.bak` files moved aside by `restore` are written mode 0600 (owner-only).
 - The backup is one self-contained `.db` file (no `-wal`/`-shm`). It can briefly
   need as much extra disk as the database size.
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -195,6 +196,53 @@ func TestBackupRefusesExistingAndLeavesNoPartial(t *testing.T) {
 	}
 	if _, err := os.Stat(dest2); err == nil {
 		t.Fatal("partial backup under dest")
+	}
+}
+
+func TestBackupAndAsideModes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file modes are not meaningful on Windows")
+	}
+	defer setPermissiveUmask()()
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.db")
+	makeDB(t, src, 2)
+	if err := os.Chmod(src, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mode := func(p string) os.FileMode {
+		t.Helper()
+		st, err := os.Stat(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return st.Mode().Perm()
+	}
+
+	dest := filepath.Join(dir, "b.db")
+	if _, err := Backup(ctx, src, dest, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := mode(dest); got != 0o600 {
+		t.Fatalf("backup mode %o, want 600", got)
+	}
+	if _, err := Backup(ctx, src, dest, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := mode(dest); got != 0o600 {
+		t.Fatalf("forced backup mode %o, want 600", got)
+	}
+
+	info, err := Restore(ctx, dest, src, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := mode(info.Aside); got != 0o600 {
+		t.Fatalf("aside mode %o, want 600", got)
+	}
+	if got := mode(src); got&0o077 != 0 {
+		t.Fatalf("restored db mode %o is group/world accessible", got)
 	}
 }
 

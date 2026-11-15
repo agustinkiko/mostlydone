@@ -131,6 +131,12 @@ func Backup(ctx context.Context, srcPath, dest string, force bool) (Info, error)
 	if err != nil {
 		return Info{}, fmt.Errorf("verify backup: %w", err)
 	}
+	// Backups hold the whole database: owner-only, set explicitly rather than
+	// relying on CreateTemp. Done before the move so a failure leaves nothing
+	// under dest (the deferred cleanup removes the temp file).
+	if err := os.Chmod(tmpName, 0o600); err != nil {
+		return Info{}, fmt.Errorf("set backup mode: %w", err)
+	}
 	if err := syncFile(tmpName); err != nil {
 		return Info{}, err
 	}
@@ -215,6 +221,12 @@ func Restore(ctx context.Context, srcBackup, dbPath string, force bool) (Info, e
 		}
 		if err := os.Rename(dbPath, aside); err != nil {
 			return Info{}, err
+		}
+		// The aside file keeps the live file's mode; make it owner-only. The
+		// restore has not completed yet, so undo like any other later failure.
+		if err := os.Chmod(aside, 0o600); err != nil {
+			undo(dbPath, aside)
+			return Info{}, fmt.Errorf("set mode on %s: %w", aside, err)
 		}
 	}
 	// Stale WAL/SHM belong to the old file and would corrupt the new one.
