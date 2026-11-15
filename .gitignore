@@ -1,0 +1,11 @@
+.cache/
+/mostlydone
+*.db
+*.db-wal
+*.db-shm
+web/node_modules/
+web/dist/
+# Built UI: only the placeholder is kept in version control.
+internal/webui/dist/*
+!internal/webui/dist/.keep
+.claude/

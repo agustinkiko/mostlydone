@@ -1,0 +1,44 @@
+# One-off: loads the Plane export into Paperplane's database. Paperplane must be
+# scaled to 0 first (one SQLite file, one writer). The importer binary and the
+# export file come from ~/paperplane/import on the node.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: plane-import
+  namespace: paperplane
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: import
+      image: paperplane:20261115-2
+      imagePullPolicy: Never
+      command: ["/tools/plane-import", "-db", "/data/paperplane.db", "-from", "/tools/plane-export.json"]
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      env:
+        - { name: SQLITE_TMPDIR, value: /tmp }
+      volumeMounts:
+        - { name: data, mountPath: /data }
+        - { name: tmp, mountPath: /tmp }
+        - { name: tools, mountPath: /tools, readOnly: true }
+  volumes:
+    - name: tmp
+      emptyDir: {}
+    - name: data
+      persistentVolumeClaim:
+        claimName: paperplane-data
+    - name: tools
+      hostPath:
+        path: /home/echolab/paperplane/import
+        type: Directory

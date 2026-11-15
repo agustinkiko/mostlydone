@@ -1,0 +1,44 @@
+# Temporary, read-only look at the old Plane database. Used once to import
+# Plane's data into Paperplane, then deleted. The old data volume is mounted
+# read-only; Postgres runs on a copy in a scratch directory that disappears
+# with the pod. Nothing here changes Plane's own data.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: plane-export
+  namespace: plane
+  labels:
+    app: plane-export
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsUser: 70
+    runAsGroup: 70
+    fsGroup: 70
+  containers:
+    - name: pg
+      image: postgres:15.7-alpine
+      imagePullPolicy: IfNotPresent
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          set -e
+          cp -a /src/plane /work/pgdata
+          chmod 700 /work/pgdata
+          rm -f /work/pgdata/postmaster.pid
+          exec postgres -D /work/pgdata -c listen_addresses=127.0.0.1 -c unix_socket_directories=/tmp -c fsync=off
+      volumeMounts:
+        - { name: old-data, mountPath: /src, readOnly: true }
+        - { name: work, mountPath: /work }
+      resources:
+        requests: { cpu: 50m, memory: 128Mi }
+        limits: { memory: 512Mi }
+  volumes:
+    - name: old-data
+      persistentVolumeClaim:
+        claimName: pvc-plane-pgdb-vol-plane-pgdb-wl-0
+        readOnly: true
+    - name: work
+      emptyDir:
+        sizeLimit: 3Gi
