@@ -21,8 +21,10 @@ public v1 API so existing Plane clients and scripts keep working.
 ## Layout
 
 ```
-cmd/mostlydone/main.go     entrypoint: config, open DB, start HTTP server
+cmd/mostlydone/main.go     entrypoint: no args = serve; `backup` / `restore` / `help` subcommands
 internal/store/         schema, migrations, all SQL. No HTTP types here.
+internal/backup/        online backup (VACUUM INTO) and offline restore
+internal/dblock/        advisory lock on <db>.lock (one process per database)
 internal/api/           REST handlers, auth middleware, JSON shapes
 internal/mcp/           MCP tools; calls internal/store directly
 internal/webui/         embed.FS of web/dist + SPA fallback handler
@@ -35,7 +37,7 @@ docs/                   plane-api-reference.md, REA capture notes
 | Name | Default | Meaning |
 | --- | --- | --- |
 | `MOSTLYDONE_ADDR` | `:8080` | listen address. The default listens on all interfaces on purpose: containers and Kubernetes need `0.0.0.0` to be reachable, and the first-run setup token (see Auth) closes the open first-run window. For bare-metal runs behind a local reverse proxy, set `127.0.0.1:8080` |
-| `MOSTLYDONE_DB` | `./mostlydone.db` | SQLite file path |
+| `MOSTLYDONE_DB` | `./mostlydone.db` | SQLite file path (also the default `-db` of `backup` / `restore`) |
 | `MOSTLYDONE_ADMIN_EMAIL` / `MOSTLYDONE_ADMIN_PASSWORD` | unset | if set and no users exist, create the first admin at start |
 | `MOSTLYDONE_WORKSPACE_SLUG` | `main` | slug of the workspace created at first start |
 | `MOSTLYDONE_SECURE_COOKIES` | `false` | set `true` behind HTTPS |
@@ -173,6 +175,23 @@ How: one process, no queue or cache service, SQLite WAL with one writer
 connection and a small reader pool, indexes on every filter column, no N+1
 queries on list endpoints (assignees/labels fetched in one extra query per
 page), UI assets pre-compressed and served with long cache headers.
+
+## Operations
+
+Runbook: `docs/OPERATIONS.md`.
+
+- `mostlydone backup [-db PATH] [-force] DEST`: online snapshot with
+  `VACUUM INTO`, safe while serving. Opens the source read-only (no migration),
+  writes a temp file, checks `integrity_check` and the schema version, then
+  renames to `DEST`. Refuses an existing `DEST` without `-force`.
+- `mostlydone restore [-db PATH] [-force] SRC`: offline. Validates `SRC`
+  (integrity, `schema_migrations`, version not newer than the binary). An
+  existing DB needs `-force` and is moved to
+  `<db>.pre-restore-<UTC timestamp>.bak` after a WAL checkpoint; stale
+  `-wal`/`-shm` are removed; the new file is copied beside the DB and renamed in.
+- The server holds an exclusive `flock` on `<db>.lock` while running (unix; a
+  no-op elsewhere). A second server on the same file refuses to start, and
+  `restore` refuses while the lock is held. `backup` does not take the lock.
 
 ## Verification
 

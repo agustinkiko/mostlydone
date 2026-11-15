@@ -5,7 +5,9 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -15,6 +17,8 @@ import (
 	"time"
 
 	"mostlydone/internal/api"
+	"mostlydone/internal/backup"
+	"mostlydone/internal/dblock"
 	"mostlydone/internal/mcp"
 	"mostlydone/internal/store"
 	"mostlydone/internal/webui"
@@ -91,11 +95,94 @@ func newHandler(s *store.Store, slug string, secure bool, dbPath string) http.Ha
 	return mux
 }
 
+const usage = `usage:
+  mostlydone                              run the server (default)
+  mostlydone backup [-db PATH] [-force] DEST
+                                          online backup; safe while the server runs
+  mostlydone restore [-db PATH] [-force] SRC
+                                          offline restore; server must be stopped
+  mostlydone help                         show this message
+
+-db defaults to $MOSTLYDONE_DB, then ./mostlydone.db.
+`
+
+// run dispatches subcommands and returns an exit code. No args means serve,
+// which is handled by main (it never returns normally).
+func run(args []string, stdout, stderr io.Writer) int {
+	switch args[0] {
+	case "help", "-h", "-help", "--help":
+		fmt.Fprint(stdout, usage)
+		return 0
+	case "backup", "restore":
+		return runBackup(args[0], args[1:], stdout, stderr)
+	}
+	fmt.Fprintf(stderr, "unknown command %q\n\n%s", args[0], usage)
+	return 2
+}
+
+func runBackup(cmd string, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	db := fs.String("db", env("MOSTLYDONE_DB", "./mostlydone.db"), "database path")
+	var force bool
+	if cmd == "backup" {
+		fs.BoolVar(&force, "force", false, "overwrite DEST if it exists")
+		fs.Usage = func() { fmt.Fprintf(stderr, "usage: mostlydone backup [-db PATH] [-force] DEST\n"); fs.PrintDefaults() }
+	} else {
+		fs.BoolVar(&force, "force", false, "replace the existing database (it is moved aside first)")
+		fs.Usage = func() { fmt.Fprintf(stderr, "usage: mostlydone restore [-db PATH] [-force] SRC\n"); fs.PrintDefaults() }
+	}
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
+	if fs.NArg() != 1 {
+		fs.Usage()
+		return 2
+	}
+	ctx := context.Background()
+	if cmd == "backup" {
+		info, err := backup.Backup(ctx, *db, fs.Arg(0), force)
+		if err != nil {
+			fmt.Fprintf(stderr, "backup failed: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "backup ok: %s size=%d schema_version=%d took=%s\n", info.Path, info.Size, info.SchemaVersion, info.Duration.Round(time.Millisecond))
+		return 0
+	}
+	info, err := backup.Restore(ctx, fs.Arg(0), *db, force)
+	if err != nil {
+		fmt.Fprintf(stderr, "restore failed: %v\n", err)
+		return 1
+	}
+	if info.Aside != "" {
+		fmt.Fprintf(stdout, "previous database moved to %s\n", info.Aside)
+	}
+	fmt.Fprintf(stdout, "restore ok: %s size=%d schema_version=%d took=%s\n", info.Path, info.Size, info.SchemaVersion, info.Duration.Round(time.Millisecond))
+	return 0
+}
+
 func main() {
+	if len(os.Args) > 1 {
+		os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	}
+	serve()
+}
+
+func serve() {
 	addr := env("MOSTLYDONE_ADDR", ":8080")
 	dbPath := env("MOSTLYDONE_DB", "./mostlydone.db")
 	slug := env("MOSTLYDONE_WORKSPACE_SLUG", "main")
 	secure := os.Getenv("MOSTLYDONE_SECURE_COOKIES") == "true"
+
+	// One server per database file; also keeps `restore` out while serving.
+	lock, err := dblock.Acquire(dbPath)
+	if err != nil {
+		log.Fatalf("%v (lock file %s)", err, dblock.Path(dbPath))
+	}
+	defer lock.Close()
 
 	s, err := store.Open(dbPath)
 	if err != nil {

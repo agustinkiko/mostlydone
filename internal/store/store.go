@@ -69,6 +69,16 @@ func Open(path string) (*Store, error) {
 	return &Store{w: w, r: r, TrashRetention: DefaultTrashRetention, now: time.Now}, nil
 }
 
+// MaxSchemaVersion returns the highest migration version embedded in the
+// binary. It needs no database.
+func MaxSchemaVersion() int {
+	migs, err := listMigrations(migrationFS)
+	if err != nil || len(migs) == 0 {
+		return 0
+	}
+	return migs[len(migs)-1].version
+}
+
 // Close closes both handles.
 func (s *Store) Close() error {
 	return errors.Join(s.r.Close(), s.w.Close())
