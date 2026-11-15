@@ -27,9 +27,15 @@ export interface AccountUser {
   is_active: boolean;
 }
 
+export interface Prefs {
+  theme: "system" | "light" | "dark";
+  density: "comfortable" | "compact";
+}
+
 export interface Me {
   user: User | null;
   role: number | null;
+  prefs?: Prefs | null;
   workspace_slug: string;
   setup_required: boolean;
   setup_token_required?: boolean;

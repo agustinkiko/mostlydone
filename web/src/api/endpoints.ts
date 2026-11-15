@@ -2,8 +2,8 @@
 
 import { api, fetchAllPages, request } from "./client";
 import type {
-  AccountUser, Activity, Comment, Cycle, Issue, IssueInput, IssueLink, Label, Me, Member, Module, Page, Project,
-  SearchHit, State, Token, TrashedProject, User,
+  AccountUser, Activity, Comment, Cycle, Issue, IssueInput, IssueLink, Label, Me, Member, Module, Page, Prefs,
+  Project, SearchHit, State, Token, TrashedProject, User,
 } from "./types";
 
 let slug = "main";
@@ -30,6 +30,7 @@ export const auth = {
   tokens: () => api.get<Token[]>("/auth/tokens"),
   createToken: (label: string) => api.post<Token>("/auth/tokens", { label }),
   deleteToken: (id: string) => api.del(`/auth/tokens/${id}`),
+  updatePrefs: (patch: Partial<Prefs>) => api.patch<Prefs>("/auth/me/prefs", patch),
   createUser: (body: { email: string; password: string; display_name: string; role: number }) =>
     api.post<Member>("/auth/users", body),
   users: () => api.get<AccountUser[]>("/auth/users"),

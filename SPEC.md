@@ -84,6 +84,13 @@ docs/                   plane-api-reference.md, REA capture notes
   This includes an admin demoting or deactivating themselves. The check and the
   change run in one write transaction.
 - Expired sessions are deleted at startup and then every hour.
+- Preferences (per user, not per workspace; a UI extension outside Plane's API,
+  so `/api/v1/` responses never include them): `GET /auth/me` returns `prefs`
+  (effective values, `null` when logged out). `PATCH /auth/me/prefs` (session or
+  token) takes an object with any of `theme` (`system` | `light` | `dark`,
+  default `system`) and `density` (`comfortable` | `compact`, default
+  `comfortable`), merges it into the stored prefs and returns the effective
+  prefs. Unknown keys and invalid values are 400 field errors; nothing is saved.
 - Cookie-authenticated writes must send header `X-Requested-With: mostlydone`
   (CSRF guard; a cross-site form cannot set it). API-key requests are exempt.
 - Every `/api/v1/` and `/mcp` request needs a session or a token. 401 otherwise.
@@ -105,7 +112,7 @@ docs/                   plane-api-reference.md, REA capture notes
 IDs are UUID v4 strings. Timestamps are RFC 3339 UTC strings. Dates are `YYYY-MM-DD`.
 Foreign keys on, `ON DELETE CASCADE` for children. Hard deletes, except projects: deleting a project moves it to a 30-day trash (`projects.deleted_at`) and it is hard-deleted when purged.
 
-- `users`, `sessions`, `api_tokens`
+- `users` (includes `prefs`, a JSON object of known UI preference keys), `sessions`, `api_tokens`
 - `workspaces` (name, slug unique), `workspace_members` (role)
 - `projects` (workspace, name, identifier unique per workspace, description, next issue sequence, `deleted_at` — NULL means live, set means in the trash)
 - `states` (project, name, color, group: backlog | unstarted | started | completed | cancelled, sequence, default flag)

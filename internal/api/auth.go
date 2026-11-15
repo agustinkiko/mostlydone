@@ -53,6 +53,7 @@ func (a *API) authRoutes(mux *http.ServeMux) {
 	private("POST /auth/users", false, createUser)
 	private("PATCH /auth/users/{id}", false, updateUser)
 	private("POST /auth/password", true, changePassword)
+	private("PATCH /auth/me/prefs", false, updatePrefs)
 }
 
 type credentials struct {
@@ -161,12 +162,18 @@ func (a *API) me(c *rc) {
 		c.fail(err)
 		return
 	}
-	out := map[string]any{"user": nil, "role": nil, "workspace_slug": a.slug, "setup_required": n == 0}
+	out := map[string]any{"user": nil, "role": nil, "prefs": nil, "workspace_slug": a.slug, "setup_required": n == 0}
 	if n == 0 {
 		out["setup_token_required"] = true
 	}
 	if u, _, err := a.authenticate(c.r); err == nil {
 		out["user"] = userLite(u)
+		prefs, err := a.s.UserPrefs(c.r.Context(), u.ID)
+		if err != nil {
+			c.fail(err)
+			return
+		}
+		out["prefs"] = prefs
 		if ws, err := a.s.Workspace(c.r.Context(), a.slug); err == nil {
 			if role, err := a.s.MemberRole(c.r.Context(), ws.ID, u.ID); err == nil {
 				out["role"] = role
@@ -216,6 +223,19 @@ func deleteToken(c *rc) {
 		return
 	}
 	c.noContent()
+}
+
+func updatePrefs(c *rc) {
+	var in map[string]any
+	if !c.decode(&in) {
+		return
+	}
+	prefs, err := c.a.s.UpdatePrefs(c.r.Context(), c.user.ID, in)
+	if err != nil {
+		c.fail(err)
+		return
+	}
+	c.json(http.StatusOK, prefs)
 }
 
 // createUser lets an admin add a workspace member (the spec has no other way
