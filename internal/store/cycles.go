@@ -156,12 +156,21 @@ var cycleViews = map[string]string{
 // ListCycles lists cycles, filtered by view (all, current, upcoming,
 // completed, draft, incomplete; unknown = all).
 func (s *Store) ListCycles(ctx context.Context, projectID, view string) ([]*Cycle, error) {
+	return s.ListCyclesBy(ctx, projectID, view, "")
+}
+
+var cycleOrder = map[string]string{"created_at": "created_at", "updated_at": "updated_at", "name": "name",
+	"start_date": "start_date", "end_date": "end_date", "sort_order": "sort_order"}
+
+// ListCyclesBy is ListCycles with an allow-listed order_by (unknown or empty
+// keeps the default, newest first).
+func (s *Store) ListCyclesBy(ctx context.Context, projectID, view, orderBy string) ([]*Cycle, error) {
 	cond := cycleViews[view]
 	args := []any{projectID}
 	for range strings.Count(cond, "?") {
 		args = append(args, today())
 	}
-	return queryCycles(ctx, s.r, `project_id = ?`+cond+` ORDER BY created_at DESC, id`, args...)
+	return queryCycles(ctx, s.r, `project_id = ?`+cond+` ORDER BY `+orderClause(orderBy, cycleOrder, "created_at DESC")+`, id`, args...)
 }
 
 // CycleByRef finds a cycle by id or name (case-insensitive).
@@ -489,7 +498,16 @@ func (s *Store) GetModule(ctx context.Context, projectID, id string) (*Module, e
 
 // ListModules lists a project's modules, newest first.
 func (s *Store) ListModules(ctx context.Context, projectID string) ([]*Module, error) {
-	return queryModules(ctx, s.r, `project_id = ? ORDER BY created_at DESC, id`, projectID)
+	return s.ListModulesBy(ctx, projectID, "")
+}
+
+var moduleOrder = map[string]string{"created_at": "created_at", "updated_at": "updated_at", "name": "name",
+	"start_date": "start_date", "target_date": "target_date", "status": "status", "sort_order": "sort_order"}
+
+// ListModulesBy is ListModules with an allow-listed order_by (unknown or
+// empty keeps the default, newest first).
+func (s *Store) ListModulesBy(ctx context.Context, projectID, orderBy string) ([]*Module, error) {
+	return queryModules(ctx, s.r, `project_id = ? ORDER BY `+orderClause(orderBy, moduleOrder, "created_at DESC")+`, id`, projectID)
 }
 
 // ModuleByRef finds a module by id or name (case-insensitive).

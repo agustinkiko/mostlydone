@@ -183,7 +183,7 @@ func activityJSON(a *store.Activity, wsID string) map[string]any {
 	return map[string]any{
 		"id": a.ID, "verb": a.Verb, "field": str(a.Field), "old_value": str(a.OldValue), "new_value": str(a.NewValue),
 		"comment": a.Comment, "attachments": []string{}, "old_identifier": str(a.OldIdentifier), "new_identifier": str(a.NewIdentifier),
-		"epoch": a.Epoch, "issue": a.IssueID, "issue_comment": str(a.IssueCommentID), "actor": str(a.ActorID),
+		"epoch": int64(a.Epoch), "issue": a.IssueID, "issue_comment": str(a.IssueCommentID), "actor": str(a.ActorID),
 		"project": a.ProjectID, "workspace": wsID, "created_at": a.CreatedAt, "updated_at": a.UpdatedAt, "deleted_at": nil,
 	}
 }

@@ -125,7 +125,8 @@ Rulings where the reference is ambiguous or we differ on purpose:
 | Roles | 20 admin, 15 member, 5 guest. No per-project membership: every workspace member belongs to every project. Guests can read and comment only. Project members endpoints return the workspace members |
 | Triage state | Not created. New projects get the five visible default states |
 | `cycle_view`, `module_view` | Default `true` (Plane defaults to false). Other feature flags are stored and returned but do nothing |
-| Out-of-scope fields | Returned with Plane's default value (`estimate_point: null`, `type_id: null`, `is_draft: false`, `archived_at: null`, `point: null`, `logo_props: {}` …) and ignored on write. No archive, transfer, summary or `-lite` endpoints |
+| Out-of-scope fields | Returned with Plane's default value (`estimate_point: null`, `type_id: null`, `is_draft: false`, `archived_at: null`, `point: null`, `logo_props: {}` …) and ignored on write. No archive, transfer or summary endpoints. `projects-lite`, `cycles-lite` and `modules-lite` ARE implemented (read-only lists, Plane envelope, no metric counts; `include_archived` accepted and ignored) because Plane's official MCP server lists projects, cycles and modules through them and cannot discover ids without them. Other `-lite` endpoints (`members-lite`, `project-members-lite`) remain out of scope |
+| Activity `epoch` | Stored as REAL, emitted as an integer (unix seconds, truncated). The reference lists float, but the official Python SDK validates it as an integer |
 | `external_source` / `external_id` | Stored on projects, states, labels, work items, cycles, modules, comments, with the 409 duplicate rule. Needed later to import from the old Plane |
 | Cycle dates | Accept `YYYY-MM-DD` or an ISO datetime, both-or-neither. Stored as dates. Returned as `…T00:00:00.000000Z` (start) and `…T23:59:59.000000Z` (end) |
 | Modules | A work item may be in many modules. Adding never removes it from another module |

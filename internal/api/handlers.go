@@ -27,6 +27,7 @@ func (a *API) routes(mux *http.ServeMux) {
 	}
 
 	h("GET "+ws+"/projects/", guest, listProjects)
+	h("GET "+ws+"/projects-lite/", guest, listProjectsLite)
 	h("POST "+ws+"/projects/", member, createProject)
 	h("GET "+pj+"/", guest, func(c *rc) { c.one(200, projectJSON(c.p, c.role)) })
 	h("PATCH "+pj+"/", admin, updateProject)
@@ -71,6 +72,7 @@ func (a *API) routes(mux *http.ServeMux) {
 	}
 
 	h("GET "+pj+"/cycles/", guest, listCycles)
+	h("GET "+pj+"/cycles-lite/", guest, listCyclesLite)
 	h("POST "+pj+"/cycles/", member, createCycle)
 	h("GET "+pj+"/cycles/{id}/", guest, getCycle)
 	h("PATCH "+pj+"/cycles/{id}/", member, updateCycle)
@@ -81,6 +83,7 @@ func (a *API) routes(mux *http.ServeMux) {
 	h("DELETE "+pj+"/cycles/{id}/cycle-issues/{issue_id}/", member, removeCycleIssue)
 
 	h("GET "+pj+"/modules/", guest, listModules)
+	h("GET "+pj+"/modules-lite/", guest, listModulesLite)
 	h("POST "+pj+"/modules/", member, createModule)
 	h("GET "+pj+"/modules/{id}/", guest, getModule)
 	h("PATCH "+pj+"/modules/{id}/", member, updateModule)
@@ -145,6 +148,17 @@ func listProjects(c *rc) {
 		return
 	}
 	listOf(c, list, func(p *store.Project) map[string]any { return projectJSON(p, c.role) })
+}
+
+// listProjectsLite serves projects-lite. include_archived is accepted and
+// ignored (there is no archive).
+func listProjectsLite(c *rc) {
+	list, err := c.a.s.ListProjects(c.r.Context(), c.ws.ID, "-created_at")
+	if err != nil {
+		c.fail(err)
+		return
+	}
+	listOf(c, list, projectLite)
 }
 
 func createProject(c *rc) {
@@ -696,6 +710,23 @@ func listCycles(c *rc) {
 	c.listAll(objs)
 }
 
+// stripCounts drops the per-group issue counts that the -lite lists omit.
+func stripCounts(o map[string]any) map[string]any {
+	for _, k := range []string{"total_issues", "completed_issues", "cancelled_issues", "started_issues", "unstarted_issues", "backlog_issues"} {
+		delete(o, k)
+	}
+	return o
+}
+
+func listCyclesLite(c *rc) {
+	list, err := c.a.s.ListCyclesBy(c.r.Context(), c.p.ID, "", c.r.URL.Query().Get("order_by"))
+	if err != nil {
+		c.fail(err)
+		return
+	}
+	listOf(c, list, func(x *store.Cycle) map[string]any { return stripCounts(cycleJSON(x, c.ws.ID)) })
+}
+
 func getCycle(c *rc) {
 	x, err := c.a.s.GetCycle(c.r.Context(), c.p.ID, c.r.PathValue("id"))
 	if err != nil {
@@ -814,6 +845,15 @@ func listModules(c *rc) {
 		return
 	}
 	listOf(c, list, func(m *store.Module) map[string]any { return moduleJSON(m, c.ws.ID) })
+}
+
+func listModulesLite(c *rc) {
+	list, err := c.a.s.ListModulesBy(c.r.Context(), c.p.ID, c.r.URL.Query().Get("order_by"))
+	if err != nil {
+		c.fail(err)
+		return
+	}
+	listOf(c, list, func(m *store.Module) map[string]any { return stripCounts(moduleJSON(m, c.ws.ID)) })
 }
 
 func getModule(c *rc) {
