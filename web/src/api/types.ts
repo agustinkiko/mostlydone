@@ -23,6 +23,7 @@ export interface Me {
   role: number | null;
   workspace_slug: string;
   setup_required: boolean;
+  setup_token_required?: boolean;
 }
 
 export interface Project {

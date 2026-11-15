@@ -68,16 +68,17 @@ function AuthForm({ setup, notice, onDone }: { setup?: boolean; notice?: string;
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
+  const [setupToken, setSetupToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
-  const ids = { email: useId(), name: useId(), pw: useId() };
+  const ids = { email: useId(), name: useId(), pw: useId(), tok: useId() };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      if (setup) await auth.setup(email.trim(), password, name.trim());
+      if (setup) await auth.setup(email.trim(), password, name.trim(), setupToken.trim());
       else await auth.login(email.trim(), password);
       onDone();
     } catch (err) {
@@ -115,8 +116,16 @@ function AuthForm({ setup, notice, onDone }: { setup?: boolean; notice?: string;
             value={password} onChange={(e) => setPassword(e.target.value)} aria-invalid={!!fieldErr("password")} />
           {fieldErr("password") && <p className="err">{fieldErr("password")}</p>}
         </div>
+        {setup && (
+          <div className="field">
+            <label htmlFor={ids.tok}>Setup token</label>
+            <input id={ids.tok} className="input" autoComplete="off" spellCheck={false} required value={setupToken}
+              onChange={(e) => setSetupToken(e.target.value)} />
+            <p className="muted">Printed in the server log and saved to <code>&lt;db&gt;.setup-token</code> next to the database file.</p>
+          </div>
+        )}
         {general && <p className="err" role="alert">{general}</p>}
-        <button type="submit" className="btn primary" style={{ width: "100%", justifyContent: "center" }} disabled={busy || !email || !password}>
+        <button type="submit" className="btn primary" style={{ width: "100%", justifyContent: "center" }} disabled={busy || !email || !password || (setup && !setupToken.trim())}>
           {busy ? "Please wait…" : setup ? "Create admin and continue" : "Sign in"}
         </button>
       </form>

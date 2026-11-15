@@ -24,8 +24,8 @@ export const auth = {
   me: () => request<Me>("/auth/me", { allow401: true }),
   login: (email: string, password: string) =>
     request<{ user: User }>("/auth/login", { method: "POST", body: { email, password }, allow401: true }),
-  setup: (email: string, password: string, display_name: string) =>
-    request<{ user: User }>("/auth/setup", { method: "POST", body: { email, password, display_name }, allow401: true }),
+  setup: (email: string, password: string, display_name: string, setup_token: string) =>
+    request<{ user: User }>("/auth/setup", { method: "POST", body: { email, password, display_name, setup_token }, allow401: true }),
   logout: () => request<void>("/auth/logout", { method: "POST", body: {}, allow401: true }),
   tokens: () => api.get<Token[]>("/auth/tokens"),
   createToken: (label: string) => api.post<Token>("/auth/tokens", { label }),

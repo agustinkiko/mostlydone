@@ -34,7 +34,7 @@ docs/                   plane-api-reference.md, REA capture notes
 
 | Name | Default | Meaning |
 | --- | --- | --- |
-| `MOSTLYDONE_ADDR` | `:8080` | listen address |
+| `MOSTLYDONE_ADDR` | `:8080` | listen address. The default listens on all interfaces on purpose: containers and Kubernetes need `0.0.0.0` to be reachable, and the first-run setup token (see Auth) closes the open first-run window. For bare-metal runs behind a local reverse proxy, set `127.0.0.1:8080` |
 | `MOSTLYDONE_DB` | `./mostlydone.db` | SQLite file path |
 | `MOSTLYDONE_ADMIN_EMAIL` / `MOSTLYDONE_ADMIN_PASSWORD` | unset | if set and no users exist, create the first admin at start |
 | `MOSTLYDONE_WORKSPACE_SLUG` | `main` | slug of the workspace created at first start |
@@ -44,8 +44,20 @@ docs/                   plane-api-reference.md, REA capture notes
 ## Auth
 
 - Users: email + bcrypt password hash.
-- First run with no users: `POST /auth/setup` (email, password, display name)
-  creates the admin and the workspace. Refused once any user exists.
+- First run with no users: `POST /auth/setup` (email, password, display name,
+  `setup_token`) creates the admin and the workspace. Refused once any user exists.
+  - At startup, if there are no users (and the `MOSTLYDONE_ADMIN_*` bootstrap
+    did not create one), the server generates a one-time setup token
+    (`setup_` + 192 random bits), logs it once, and writes it to
+    `<MOSTLYDONE_DB>.setup-token` with mode 0600 (best effort; a failure is
+    logged as a warning). The token is held in memory only, in the API value.
+  - A missing or wrong `setup_token` gets 403 `{"detail": ...}`. It is compared
+    in constant time. Each failure counts against the login throttle (same
+    limiter, same client address), so guessing ends in 429.
+  - After a successful setup the token is cleared from memory and the file is
+    removed; it cannot be reused. With the env-var bootstrap no token exists.
+  - `GET /auth/me` returns `setup_required`, plus `setup_token_required: true`
+    while setup is pending. The UI's setup form asks for the token.
 - Browser: `POST /auth/login` sets an HttpOnly, SameSite=Lax session cookie.
   Only a SHA-256 hash of the session token is stored. `POST /auth/logout`.
 - API clients: `X-API-Key: <token>` (Plane style). MCP also accepts
@@ -55,6 +67,18 @@ docs/                   plane-api-reference.md, REA capture notes
 - Cookie-authenticated writes must send header `X-Requested-With: mostlydone`
   (CSRF guard; a cross-site form cannot set it). API-key requests are exempt.
 - Every `/api/v1/` and `/mcp` request needs a session or a token. 401 otherwise.
+
+## Migrations
+
+- Migrations are embedded SQL files applied in version order at startup.
+- If the database's highest applied version is newer than the binary's, startup
+  fails with `database schema vN is newer than this binary (max vM); upgrade
+  MostlyDone or restore a backup`, and the database is not modified.
+- Before applying pending migrations to an existing database (not a brand-new
+  one), a snapshot is made with `VACUUM INTO`: `<db>.pre-v<N>.bak`, where N is
+  the first pending version. An existing file is never overwritten; a UTC
+  timestamp is appended (`<db>.pre-v<N>.bak.20060102T150405Z`). If the snapshot
+  fails, startup fails. In-memory databases are skipped.
 
 ## Data model
 

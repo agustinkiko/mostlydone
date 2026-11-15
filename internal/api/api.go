@@ -30,6 +30,7 @@ type API struct {
 	slug          string
 	secureCookies bool
 	logins        *loginLimiter
+	setup         *setupGate
 
 	// ClientIPHeader, when set, names the proxy header that carries the real
 	// client address for the login throttle. See clientIP.
@@ -38,7 +39,7 @@ type API struct {
 
 // New returns the API for the workspace with slug.
 func New(s *store.Store, slug string, secureCookies bool) *API {
-	return &API{s: s, slug: slug, secureCookies: secureCookies, logins: newLoginLimiter()}
+	return &API{s: s, slug: slug, secureCookies: secureCookies, logins: newLoginLimiter(), setup: &setupGate{}}
 }
 
 // ErrUnauthenticated means no usable credentials were sent.

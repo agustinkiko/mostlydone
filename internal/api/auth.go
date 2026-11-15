@@ -42,7 +42,7 @@ func (a *API) authRoutes(mux *http.ServeMux) {
 			fn(c)
 		})
 	}
-	public("POST /auth/setup", a.setup)
+	public("POST /auth/setup", a.doSetup)
 	public("POST /auth/login", a.login)
 	public("POST /auth/logout", a.logout)
 	public("GET /auth/me", a.me)
@@ -70,9 +70,33 @@ func (a *API) startSession(c *rc, u *store.User) bool {
 	return true
 }
 
-func (a *API) setup(c *rc) {
-	var in credentials
+func (a *API) doSetup(c *rc) {
+	// Once anyone exists, setup is simply over: say so without involving the
+	// token or the throttle.
+	if n, err := a.s.UserCount(c.r.Context()); err != nil {
+		c.fail(err)
+		return
+	} else if n > 0 {
+		c.json(http.StatusForbidden, map[string]any{"error": "Setup has already been completed."})
+		return
+	}
+	// Wrong tokens share the login throttle (same limiter, same client IP).
+	ip := a.clientIP(c.r)
+	if wait := a.logins.retryAfter(ip); wait > 0 {
+		c.w.Header().Set("Retry-After", strconv.Itoa(int(wait/time.Second)+1))
+		c.json(http.StatusTooManyRequests, map[string]any{"detail": "Too many failed attempts. Try again in a few minutes."})
+		return
+	}
+	var in struct {
+		credentials
+		SetupToken string `json:"setup_token"`
+	}
 	if !c.decode(&in) {
+		return
+	}
+	if !a.setup.check(in.SetupToken) {
+		a.logins.fail(ip)
+		c.json(http.StatusForbidden, map[string]any{"detail": "A valid setup token is required. It is printed in the server log and saved next to the database as <db>.setup-token."})
 		return
 	}
 	u, err := a.s.Setup(c.r.Context(), a.slug, in.Email, in.Password, in.DisplayName)
@@ -80,6 +104,7 @@ func (a *API) setup(c *rc) {
 		c.fail(err)
 		return
 	}
+	a.setup.clear()
 	if a.startSession(c, u) {
 		c.json(http.StatusCreated, map[string]any{"user": userLite(u), "role": store.RoleAdmin, "workspace_slug": a.slug})
 	}
@@ -134,6 +159,9 @@ func (a *API) me(c *rc) {
 		return
 	}
 	out := map[string]any{"user": nil, "role": nil, "workspace_slug": a.slug, "setup_required": n == 0}
+	if n == 0 {
+		out["setup_token_required"] = true
+	}
 	if u, _, err := a.authenticate(c.r); err == nil {
 		out["user"] = userLite(u)
 		if ws, err := a.s.Workspace(c.r.Context(), a.slug); err == nil {

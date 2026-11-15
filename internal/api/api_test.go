@@ -31,8 +31,12 @@ func newHandler(t *testing.T) (http.Handler, *store.Store) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { s.Close() })
-	return New(s, "main", false).Handler(), s
+	a := New(s, "main", false)
+	a.SetSetupToken(testSetupToken, "")
+	return a.Handler(), s
 }
+
+const testSetupToken = "setup_test_token"
 
 func (c *client) do(method, path string, body any) (int, any) {
 	c.t.Helper()
@@ -124,11 +128,11 @@ func boot(t *testing.T) (http.Handler, *client, *client) {
 	eq(t, "setup_required", me["setup_required"], true)
 	eq(t, "user before setup", me["user"], nil)
 
-	browser.must(403, "POST", "/auth/setup", map[string]any{"email": "ada@example.com", "password": "password123", "display_name": "Ada L"})
+	browser.must(403, "POST", "/auth/setup", map[string]any{"email": "ada@example.com", "password": "password123", "display_name": "Ada L", "setup_token": testSetupToken})
 	browser.csrf = true
-	browser.must(400, "POST", "/auth/setup", map[string]any{"email": "ada@example.com", "password": "short"})
-	browser.must(201, "POST", "/auth/setup", map[string]any{"email": "ada@example.com", "password": "password123", "display_name": "Ada L"})
-	browser.must(403, "POST", "/auth/setup", map[string]any{"email": "b@example.com", "password": "password123"})
+	browser.must(400, "POST", "/auth/setup", map[string]any{"email": "ada@example.com", "password": "short", "setup_token": testSetupToken})
+	browser.must(201, "POST", "/auth/setup", map[string]any{"email": "ada@example.com", "password": "password123", "display_name": "Ada L", "setup_token": testSetupToken})
+	browser.must(403, "POST", "/auth/setup", map[string]any{"email": "b@example.com", "password": "password123", "setup_token": testSetupToken})
 
 	browser.cookie = ""
 	browser.must(401, "POST", "/auth/login", map[string]any{"email": "ada@example.com", "password": "wrong-password"})
@@ -462,6 +466,7 @@ func TestLoginThrottle(t *testing.T) {
 	}
 	t.Cleanup(func() { s.Close() })
 	a := New(s, "main", false)
+	a.SetSetupToken(testSetupToken, "")
 	a.ClientIPHeader = "CF-Connecting-IP"
 	now := time.Now()
 	a.logins.now = func() time.Time { return now }
@@ -480,7 +485,7 @@ func TestLoginThrottle(t *testing.T) {
 		return w
 	}
 	c := &client{t: t, h: h, csrf: true}
-	c.must(201, "POST", "/auth/setup", map[string]any{"email": "ada@example.com", "password": "password123"})
+	c.must(201, "POST", "/auth/setup", map[string]any{"email": "ada@example.com", "password": "password123", "setup_token": testSetupToken})
 
 	// A success clears earlier failures.
 	for i := 0; i < maxLoginFailures-1; i++ {

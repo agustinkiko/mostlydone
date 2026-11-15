@@ -25,9 +25,34 @@ func env(name, def string) string {
 	return def
 }
 
-func newHandler(s *store.Store, slug string, secure bool) http.Handler {
+// newHandler builds the server. When the database has no users it arms a
+// one-time setup token, logs it and (best effort) saves it to
+// <dbPath>.setup-token; an empty dbPath skips the file.
+func newHandler(s *store.Store, slug string, secure bool, dbPath string) http.Handler {
 	a := api.New(s, slug, secure)
 	a.ClientIPHeader = os.Getenv("MOSTLYDONE_CLIENT_IP_HEADER")
+	if n, err := s.UserCount(context.Background()); err != nil {
+		log.Fatalf("count users: %v", err)
+	} else if n > 0 {
+		// Setup is done; drop a token file left behind by an earlier run.
+		if dbPath != "" {
+			os.Remove(dbPath + ".setup-token")
+		}
+	} else {
+		tok := api.NewSetupToken()
+		file := ""
+		if dbPath != "" {
+			file = dbPath + ".setup-token"
+		}
+		if err := a.SetSetupToken(tok, file); err != nil {
+			log.Printf("warning: could not write setup token file %s: %v", file, err)
+			file = ""
+		}
+		log.Printf("FIRST RUN: no users exist. Open the web UI and create the admin account with this one-time setup token:\n\n    %s\n", tok)
+		if file != "" {
+			log.Printf("The token is also saved in %s (readable only by its owner). It is deleted once setup completes.", file)
+		}
+	}
 	apiH := a.Handler()
 	mux := http.NewServeMux()
 	mux.Handle("/api/", apiH)
@@ -70,7 +95,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           newHandler(s, slug, secure),
+		Handler:           newHandler(s, slug, secure, dbPath),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,

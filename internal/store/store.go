@@ -10,9 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
-	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -54,7 +51,7 @@ func Open(path string) (*Store, error) {
 		w.Close()
 		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
-	if err := migrate(w); err != nil {
+	if err := migrate(w, path); err != nil {
 		w.Close()
 		return nil, err
 	}
@@ -73,50 +70,7 @@ func (s *Store) Close() error {
 	return errors.Join(s.r.Close(), s.w.Close())
 }
 
-func migrate(db *sql.DB) error {
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`); err != nil {
-		return err
-	}
-	var cur int
-	if err := db.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&cur); err != nil {
-		return err
-	}
-	names, err := fs.Glob(migrationFS, "migrations/*.sql")
-	if err != nil {
-		return err
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		base := strings.TrimPrefix(name, "migrations/")
-		v, err := strconv.Atoi(strings.SplitN(base, "_", 2)[0])
-		if err != nil {
-			return fmt.Errorf("migration %s: bad version prefix", name)
-		}
-		if v <= cur {
-			continue
-		}
-		body, err := migrationFS.ReadFile(name)
-		if err != nil {
-			return err
-		}
-		tx, err := db.Begin()
-		if err != nil {
-			return err
-		}
-		if _, err := tx.Exec(string(body)); err != nil {
-			tx.Rollback()
-			return fmt.Errorf("migration %s: %w", name, err)
-		}
-		if _, err := tx.Exec(`INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`, v, now()); err != nil {
-			tx.Rollback()
-			return err
-		}
-		if err := tx.Commit(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
+func migrate(db *sql.DB, path string) error { return migrateFS(db, migrationFS, path) }
 
 // querier is satisfied by *sql.DB and *sql.Tx.
 type querier interface {
