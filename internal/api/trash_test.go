@@ -17,7 +17,7 @@ func TestProjectTrash(t *testing.T) {
 	h, s := newHandler(t)
 	ctx := context.Background()
 	adm := &client{t: t, h: h, csrf: true}
-	adm.must(201, "POST", "/auth/setup", map[string]any{"email": "ada@example.com", "password": "password123", "display_name": "Ada"})
+	adm.setupAdmin("ada@example.com", "password123", "Ada")
 	ws, err := s.Workspace(ctx, "main")
 	if err != nil {
 		t.Fatal(err)

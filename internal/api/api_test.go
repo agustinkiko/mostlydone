@@ -79,6 +79,12 @@ func (c *client) do(method, path string, body any) (int, any) {
 	return w.Code, out
 }
 
+// setupAdmin completes first-run setup with the armed test setup token.
+func (c *client) setupAdmin(email, password, displayName string) {
+	c.t.Helper()
+	c.must(201, "POST", "/auth/setup", map[string]any{"email": email, "password": password, "display_name": displayName, "setup_token": testSetupToken})
+}
+
 // must asserts the status and returns the body as an object.
 func (c *client) must(status int, method, path string, body any) map[string]any {
 	c.t.Helper()
