@@ -73,14 +73,18 @@ func (f *fixture) stateByGroup(t *testing.T, group string) *State {
 
 func TestMigrationsIdempotent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "t.db")
+	migs, err := listMigrations(migrationFS)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for range 2 {
 		s, err := Open(path)
 		if err != nil {
 			t.Fatal(err)
 		}
 		var n int
-		if err := s.r.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil || n != 2 {
-			t.Fatalf("schema_migrations rows = %d, %v", n, err)
+		if err := s.r.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil || n != len(migs) {
+			t.Fatalf("schema_migrations rows = %d (err %v), want %d (embedded migration files)", n, err, len(migs))
 		}
 		var mode string
 		s.r.QueryRow(`PRAGMA journal_mode`).Scan(&mode)
