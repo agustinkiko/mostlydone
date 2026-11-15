@@ -68,7 +68,8 @@ metal behind a local reverse proxy, set `MOSTLYDONE_ADDR=127.0.0.1:8080`.
 | `MOSTLYDONE_SECURE_COOKIES` | `false` | Set `true` behind HTTPS. |
 | `MOSTLYDONE_RATE_LIMIT` | unset (off) | API requests per minute per credential. 0 or unset turns the limiter off. |
 | `MOSTLYDONE_RATE_LIMIT_BURST` | the per-minute value | Token bucket size: how many requests a client may spend at once. |
-| `MOSTLYDONE_CLIENT_IP_HEADER` | unset | Header with the real client address behind a proxy, such as `CF-Connecting-IP`. Only the login throttle uses it. Set it only when all traffic comes through that proxy. |
+| `MOSTLYDONE_CLIENT_IP_HEADER` | unset | Header with the real client address behind a proxy, such as `CF-Connecting-IP`. Only the login throttle uses it, and only for requests from `MOSTLYDONE_TRUSTED_PROXIES`. |
+| `MOSTLYDONE_TRUSTED_PROXIES` | unset | Comma-separated CIDRs or IPs of the proxies allowed to set that header. Without it the header is ignored. |
 
 ## Upgrades and migrations
 

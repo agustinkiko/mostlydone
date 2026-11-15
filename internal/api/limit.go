@@ -1,8 +1,10 @@
 package api
 
 import (
+	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -79,18 +81,63 @@ func (l *loginLimiter) clear(key string) {
 	delete(l.seen, key)
 }
 
-// clientIP is the address the login throttle counts against. Behind a proxy
-// the socket address is the proxy's, so ClientIPHeader names the header the
-// proxy sets (for example CF-Connecting-IP). Only set it when every request
-// comes through that proxy; otherwise a client could send the header itself.
-func (a *API) clientIP(r *http.Request) string {
-	if a.ClientIPHeader != "" {
-		if v := strings.TrimSpace(strings.Split(r.Header.Get(a.ClientIPHeader), ",")[0]); v != "" {
-			return v
+// ParseTrustedProxies parses a comma-separated list of CIDRs and bare IPs
+// (a bare IP is a /32 or /128). Blank entries are skipped.
+func ParseTrustedProxies(list string) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, e := range strings.Split(list, ",") {
+		if e = strings.TrimSpace(e); e == "" {
+			continue
+		}
+		p, err := netip.ParsePrefix(e)
+		if err != nil {
+			ip, ipErr := netip.ParseAddr(e)
+			if ipErr != nil {
+				return nil, fmt.Errorf("invalid trusted proxy %q: want an IP or CIDR", e)
+			}
+			ip = ip.Unmap()
+			p = netip.PrefixFrom(ip, ip.BitLen())
+		}
+		out = append(out, p.Masked())
+	}
+	return out, nil
+}
+
+func (a *API) trusted(ip netip.Addr) bool {
+	for _, p := range a.TrustedProxies {
+		if p.Contains(ip) {
+			return true
 		}
 	}
+	return false
+}
+
+// clientIP is the address the login throttle counts against. The socket
+// address is the default. ClientIPHeader is read only when the peer is a
+// trusted proxy, and then from the right: each trusted hop appends, so the
+// first untrusted entry is the last one a trusted proxy vouches for. Entries
+// further left are client-controlled.
+func (a *API) clientIP(r *http.Request) string {
+	peer := r.RemoteAddr
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		return host
+		peer = host
 	}
-	return r.RemoteAddr
+	pa, err := netip.ParseAddr(peer)
+	if err != nil || a.ClientIPHeader == "" || !a.trusted(pa.Unmap()) {
+		return peer
+	}
+	var parts []string
+	for _, line := range r.Header.Values(a.ClientIPHeader) {
+		parts = append(parts, strings.Split(line, ",")...)
+	}
+	for i := len(parts) - 1; i >= 0; i-- {
+		ip, err := netip.ParseAddr(strings.TrimSpace(parts[i]))
+		if err != nil {
+			break
+		}
+		if ip = ip.Unmap(); !a.trusted(ip) {
+			return ip.String()
+		}
+	}
+	return peer
 }

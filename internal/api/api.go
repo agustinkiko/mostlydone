@@ -9,6 +9,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 
@@ -36,6 +37,8 @@ type API struct {
 	// ClientIPHeader, when set, names the proxy header that carries the real
 	// client address for the login throttle. See clientIP.
 	ClientIPHeader string
+	// TrustedProxies are the peers whose ClientIPHeader is believed.
+	TrustedProxies []netip.Prefix
 }
 
 // New returns the API for the workspace with slug.

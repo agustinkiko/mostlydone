@@ -478,6 +478,7 @@ func TestLoginThrottle(t *testing.T) {
 	a := New(s, "main", false)
 	a.SetSetupToken(testSetupToken, "")
 	a.ClientIPHeader = "CF-Connecting-IP"
+	a.TrustedProxies, _ = ParseTrustedProxies("192.0.2.0/24") // httptest's RemoteAddr
 	now := time.Now()
 	a.logins.now = func() time.Time { return now }
 	h := a.Handler()
@@ -495,7 +496,7 @@ func TestLoginThrottle(t *testing.T) {
 		return w
 	}
 	c := &client{t: t, h: h, csrf: true}
-	c.must(201, "POST", "/auth/setup", map[string]any{"email": "ada@example.com", "password": "password123", "setup_token": testSetupToken})
+	c.setupAdmin("ada@example.com", "password123", "Ada")
 
 	// A success clears earlier failures.
 	for i := 0; i < maxLoginFailures-1; i++ {

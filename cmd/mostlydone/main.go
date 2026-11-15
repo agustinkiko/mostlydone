@@ -55,6 +55,14 @@ func rateLimitConfig() (rpm, burst int, err error) {
 func newHandler(s *store.Store, slug string, secure bool, dbPath string) http.Handler {
 	a := api.New(s, slug, secure)
 	a.ClientIPHeader = os.Getenv("MOSTLYDONE_CLIENT_IP_HEADER")
+	proxies, err := api.ParseTrustedProxies(os.Getenv("MOSTLYDONE_TRUSTED_PROXIES"))
+	if err != nil {
+		log.Fatalf("MOSTLYDONE_TRUSTED_PROXIES: %v", err)
+	}
+	a.TrustedProxies = proxies
+	if a.ClientIPHeader != "" && len(proxies) == 0 {
+		log.Printf("warning: MOSTLYDONE_CLIENT_IP_HEADER is ignored until MOSTLYDONE_TRUSTED_PROXIES is set")
+	}
 	rpm, burst, err := rateLimitConfig()
 	if err != nil {
 		log.Fatalf("%v", err)
